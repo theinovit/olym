@@ -1,0 +1,96 @@
+# Hefesto production stack — draft (F1).
+# Installed by scripts/install.sh into /opt/hefesto with a generated .env.
+# Final image build/publish (ghcr.io) lands in F2.
+
+name: hefesto
+
+services:
+  hefesto:
+    image: ghcr.io/hefesto-sh/hefesto:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://hefesto:${POSTGRES_PASSWORD}@postgres:5432/hefesto
+      REDIS_URL: redis://redis:6379
+      HEFESTO_HOST: ${HEFESTO_HOST}
+      HEFESTO_SECRET: ${HEFESTO_SECRET}
+    volumes:
+      # Hefesto orchestrates app containers on the host Docker engine.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - hefesto-data:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.hefesto.rule=Host(`${HEFESTO_HOST}`)
+      - traefik.http.routers.hefesto.entrypoints=websecure
+      - traefik.http.routers.hefesto.tls.certresolver=letsencrypt
+      - traefik.http.services.hefesto.loadbalancer.server.port=3000
+    networks:
+      - hefesto
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hefesto
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: hefesto
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hefesto -d hefesto"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - hefesto
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - hefesto
+
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/acme
+    networks:
+      - hefesto
+
+networks:
+  hefesto:
+    name: hefesto
+
+volumes:
+  hefesto-data:
+  postgres-data:
+  redis-data:
+  traefik-acme:
