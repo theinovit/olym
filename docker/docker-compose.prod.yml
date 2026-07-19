@@ -1,12 +1,15 @@
 # Hefesto production stack — draft (F1).
 # Installed by scripts/install.sh into /opt/hefesto with a generated .env.
-# Final image build/publish (ghcr.io) lands in F2.
+# Builds the application image locally from the repository Dockerfile.
 
 name: hefesto
 
 services:
   hefesto:
-    image: ghcr.io/hefesto-sh/hefesto:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: hefesto:local
     restart: unless-stopped
     depends_on:
       postgres:

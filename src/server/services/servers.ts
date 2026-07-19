@@ -1,15 +1,15 @@
 // Server service — F1 stubs. localhost via Docker socket in F2; SSH later.
 
 import type { Server } from "@/lib/types";
+import { mockServers } from "@/lib/mock-data";
 import { NotImplementedError } from "../errors";
 
 export async function listServers(): Promise<Server[]> {
-  return [];
+  return mockServers;
 }
 
 export async function getServer(id: string): Promise<Server | null> {
-  void id;
-  return null;
+  return mockServers.find((server) => server.id === id) ?? null;
 }
 
 export async function addServer(

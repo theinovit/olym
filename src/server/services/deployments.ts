@@ -2,18 +2,21 @@
 // git clone → build → run → Traefik) lands in F2.
 
 import type { Deployment, LogLine } from "@/lib/types";
+import { mockDeployments } from "@/lib/mock-data";
 import { NotImplementedError } from "../errors";
 
 export async function listDeployments(
   applicationId?: string,
 ): Promise<Deployment[]> {
-  void applicationId;
-  return [];
+  return applicationId
+    ? mockDeployments.filter(
+        (deployment) => deployment.applicationId === applicationId,
+      )
+    : mockDeployments;
 }
 
 export async function getDeployment(id: string): Promise<Deployment | null> {
-  void id;
-  return null;
+  return mockDeployments.find((deployment) => deployment.id === id) ?? null;
 }
 
 export async function triggerDeployment(
