@@ -6,7 +6,7 @@ PaaS self-hosted open-source (estilo Coolify/OpenShip): build, deploy, operaçã
 
 | Camada | Escolha | Por quê |
 |---|---|---|
-| Dashboard + API | **Next.js 15 (App Router, standalone output)** | Full-stack num só processo, roda em qualquer VPS via Node 22 ou container. Mesmo caminho do Dokploy. |
+| Dashboard + API | **Next.js 16 (App Router, standalone output)** | Full-stack num só processo, roda em qualquer VPS via Node 22 ou container. Mesmo caminho do Dokploy. |
 | UI | Tailwind CSS v4 + shadcn/ui | Requisito do projeto. Light mode default + dark mode (next-themes). |
 | Banco | PostgreSQL + **Drizzle ORM** | Fonte de verdade de projetos/deploys/servers. Migrations versionadas desde o dia 1. |
 | Fila/Jobs | BullMQ + Redis (worker separado) | Builds e deploys são long-running — nunca dentro do request do Next. |
