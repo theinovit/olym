@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
+import { CommandPalette } from "@/components/command-palette";
 import {
   SidebarInset,
   SidebarProvider,
@@ -14,8 +15,9 @@ export default function DashboardLayout({
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="bg-neutral-50 dark:bg-neutral-950">
-        <header className="flex h-12 items-center px-4 md:hidden">
-          <SidebarTrigger />
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="md:hidden" />
+          <CommandPalette />
         </header>
         <div className="flex-1 p-6 lg:p-8">{children}</div>
       </SidebarInset>

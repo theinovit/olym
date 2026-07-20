@@ -10,6 +10,7 @@
     "worker": "node --experimental-strip-types src/server/worker.ts"
   },
   "dependencies": {
+    "@xyflow/react": "^12.11.2",
     "bullmq": "^5.80.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

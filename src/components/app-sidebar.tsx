@@ -103,7 +103,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <Button
               asChild
-              className="w-full bg-linear-to-r from-violet-600 to-blue-600 text-white hover:opacity-90"
+              className="w-full bg-linear-to-r from-orange-600 to-amber-500 text-white hover:opacity-90"
             >
               <Link href="/projects/new">
                 <Plus className="size-4" />
