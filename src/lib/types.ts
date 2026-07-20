@@ -65,7 +65,8 @@ export interface Application {
   environment: EnvironmentName;
   name: string;
   framework: Framework;
-  repoUrl: string;
+  repoUrl: string | null;
+  dockerImage?: string | null;
   branch: string;
   buildCommand: string | null;
   installCommand: string | null;

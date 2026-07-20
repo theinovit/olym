@@ -8,7 +8,7 @@ import { redactSecrets } from "./redaction";
 
 export interface BuildApplication {
   id: string;
-  repoUrl: string;
+  repoUrl: string | null;
   branch: string;
 }
 
@@ -135,6 +135,9 @@ export async function cloneAndBuildApplication(
   application: BuildApplication,
   writeLog: BuildLogWriter,
 ): Promise<BuildResult> {
+  if (!application.repoUrl) {
+    throw new Error("Git deployment requires a repository URL");
+  }
   const workspace = await mkdtemp(path.join(tmpdir(), "olym-build-"));
   const repositoryPath = path.join(workspace, "repository");
   const imageTag = `olym/app-${application.id}:deployment-${deploymentId}`;
