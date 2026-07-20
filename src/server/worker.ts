@@ -5,6 +5,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import {
   cloneAndBuildApplication,
+  DeploymentReadinessError,
   startApplicationContainer,
 } from "./deploy-engine";
 import { publishDeploymentEvent } from "./deployment-events";
@@ -131,10 +132,15 @@ async function processDeployment(job: Job<DeploymentJobData>) {
       .update(schema.deployments)
       .set({ status: "failed", finishedAt: new Date() })
       .where(eq(schema.deployments.id, job.data.deploymentId));
-    await getDb()
-      .update(schema.applications)
-      .set({ status: "failed" })
-      .where(eq(schema.applications.id, job.data.applicationId));
+    if (
+      !(error instanceof DeploymentReadinessError) ||
+      !error.previousContainerKept
+    ) {
+      await getDb()
+        .update(schema.applications)
+        .set({ status: "failed" })
+        .where(eq(schema.applications.id, job.data.applicationId));
+    }
     await publishDeploymentEvent(eventRedis, job.data.deploymentId, {
       line: {
         timestamp: new Date().toISOString(),

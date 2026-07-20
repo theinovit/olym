@@ -33,6 +33,62 @@ export type BuildLogWriter = (
   message: string,
 ) => Promise<void>;
 
+export class DeploymentReadinessError extends Error {
+  readonly previousContainerKept: boolean;
+
+  constructor(message: string, previousContainerKept: boolean) {
+    super(message);
+    this.name = "DeploymentReadinessError";
+    this.previousContainerKept = previousContainerKept;
+  }
+}
+
+const delay = (milliseconds: number) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function positiveIntegerFromEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+async function waitForContainerReadiness(
+  container: Docker.Container,
+  port: number,
+): Promise<void> {
+  const timeoutMs = positiveIntegerFromEnv("DEPLOY_READINESS_TIMEOUT_MS", 60_000);
+  const intervalMs = positiveIntegerFromEnv("DEPLOY_READINESS_INTERVAL_MS", 1_000);
+  const pathName = process.env.DEPLOY_READINESS_PATH?.trim() || "/";
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const inspection = await container.inspect();
+    if (!inspection.State.Running) {
+      throw new Error(`Container exited with code ${inspection.State.ExitCode}`);
+    }
+
+    if (inspection.Config.Healthcheck?.Test?.length) {
+      const health = inspection.State.Health?.Status;
+      if (health === "healthy") return;
+      if (health === "unhealthy") throw new Error("Container healthcheck is unhealthy");
+    } else {
+      const address = Object.values(inspection.NetworkSettings.Networks)[0]?.IPAddress;
+      if (address) {
+        try {
+          const response = await fetch(`http://${address}:${port}${pathName}`, {
+            signal: AbortSignal.timeout(Math.min(intervalMs, 5_000)),
+          });
+          if (response.ok) return;
+        } catch {
+          // The application may still be booting; retry until the deadline.
+        }
+      }
+    }
+    await delay(Math.min(intervalMs, Math.max(1, deadline - Date.now())));
+  }
+
+  throw new Error(`Container readiness timed out after ${timeoutMs}ms`);
+}
+
 function createDockerClient(): Docker {
   const dockerHost = process.env.DOCKER_HOST?.trim();
   if (!dockerHost) return new Docker({ socketPath: "/var/run/docker.sock" });
@@ -144,6 +200,16 @@ export async function startApplicationContainer(
     },
   });
   await container.start();
+  try {
+    await waitForContainerReadiness(container, application.port);
+  } catch (error) {
+    await container.stop({ t: 5 }).catch(() => undefined);
+    await container.remove({ force: true }).catch(() => undefined);
+    throw new DeploymentReadinessError(
+      error instanceof Error ? error.message : "Container readiness failed",
+      previousContainers.some(({ State }) => State === "running"),
+    );
+  }
   await Promise.all(
     previousContainers.map(async ({ Id, State }) => {
       const previous = docker.getContainer(Id);
