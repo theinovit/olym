@@ -1,9 +1,12 @@
 import { Worker, type Job } from "bullmq";
 import IORedis from "ioredis";
 
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "../db";
-import { cloneAndBuildApplication } from "./deploy-engine";
+import {
+  cloneAndBuildApplication,
+  startApplicationContainer,
+} from "./deploy-engine";
 import { publishDeploymentEvent } from "./deployment-events";
 
 interface DeploymentJobData {
@@ -32,6 +35,8 @@ async function processDeployment(job: Job<DeploymentJobData>) {
         id: schema.applications.id,
         repoUrl: schema.applications.repoUrl,
         branch: schema.applications.branch,
+        environment: schema.applications.environment,
+        port: schema.applications.port,
       })
       .from(schema.applications)
       .where(eq(schema.applications.id, job.data.applicationId))
@@ -57,12 +62,79 @@ async function processDeployment(job: Job<DeploymentJobData>) {
       .update(schema.deployments)
       .set({ commitSha: result.commitSha })
       .where(eq(schema.deployments.id, job.data.deploymentId));
-    return { status: "built" as const, ...result };
+    await getDb()
+      .update(schema.deployments)
+      .set({ status: "deploying" })
+      .where(eq(schema.deployments.id, job.data.deploymentId));
+    await job.updateProgress({ stage: "deploy", percent: 85 });
+
+    const [domain, envRows] = await Promise.all([
+      getDb()
+        .select({ hostname: schema.domains.hostname })
+        .from(schema.domains)
+        .where(eq(schema.domains.applicationId, application.id))
+        .orderBy(desc(schema.domains.isPrimary))
+        .limit(1),
+      getDb()
+        .select({ key: schema.envVars.key, value: schema.envVars.value })
+        .from(schema.envVars)
+        .where(
+          and(
+            eq(schema.envVars.applicationId, application.id),
+            eq(schema.envVars.environment, application.environment),
+          ),
+        ),
+    ]);
+    const containerId = await startApplicationContainer(application, {
+      deploymentId: job.data.deploymentId,
+      imageTag: result.imageTag,
+      hostname: domain[0]?.hostname,
+      env: Object.fromEntries(envRows.map(({ key, value }) => [key, value])),
+    });
+    const finishedAt = new Date();
+    const [deploymentStartedAt] = await getDb()
+      .select({ startedAt: schema.deployments.startedAt })
+      .from(schema.deployments)
+      .where(eq(schema.deployments.id, job.data.deploymentId))
+      .limit(1);
+    const durationSec = deploymentStartedAt
+      ? Math.max(
+          0,
+          Math.round(
+            (finishedAt.getTime() - deploymentStartedAt.startedAt.getTime()) /
+              1_000,
+          ),
+        )
+      : null;
+    await Promise.all([
+      getDb()
+        .update(schema.deployments)
+        .set({ status: "running", finishedAt, durationSec })
+        .where(eq(schema.deployments.id, job.data.deploymentId)),
+      getDb()
+        .update(schema.applications)
+        .set({ status: "running" })
+        .where(eq(schema.applications.id, application.id)),
+    ]);
+    await job.updateProgress({ stage: "done", percent: 100 });
+    await publishDeploymentEvent(eventRedis, job.data.deploymentId, {
+      line: {
+        timestamp: finishedAt.toISOString(),
+        stream: "system",
+        message: `Container ${containerId.slice(0, 12)} is running`,
+      },
+      status: "running",
+    });
+    return { status: "running" as const, containerId, ...result };
   } catch (error) {
     await getDb()
       .update(schema.deployments)
       .set({ status: "failed", finishedAt: new Date() })
       .where(eq(schema.deployments.id, job.data.deploymentId));
+    await getDb()
+      .update(schema.applications)
+      .set({ status: "failed" })
+      .where(eq(schema.applications.id, job.data.applicationId));
     await publishDeploymentEvent(eventRedis, job.data.deploymentId, {
       line: {
         timestamp: new Date().toISOString(),

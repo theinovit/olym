@@ -16,6 +16,18 @@ export interface BuildResult {
   commitSha: string;
 }
 
+export interface RuntimeApplication {
+  id: string;
+  port: number;
+}
+
+export interface RuntimeOptions {
+  deploymentId: string;
+  imageTag: string;
+  hostname?: string;
+  env: Record<string, string>;
+}
+
 export type BuildLogWriter = (
   stream: "stdout" | "stderr" | "system",
   message: string,
@@ -91,4 +103,53 @@ export async function cloneAndBuildApplication(
     // Keeping build contexts after a failed deploy leaks source code and disk.
     await rm(workspace, { recursive: true, force: true });
   }
+}
+
+export async function startApplicationContainer(
+  application: RuntimeApplication,
+  options: RuntimeOptions,
+): Promise<string> {
+  const docker = createDockerClient();
+  const router = `olym-${application.id.replaceAll("-", "")}`;
+  const labels: Record<string, string> = {
+    "olym.managed": "true",
+    "olym.application-id": application.id,
+    "olym.deployment-id": options.deploymentId,
+    "traefik.enable": options.hostname ? "true" : "false",
+  };
+
+  if (options.hostname) {
+    labels[`traefik.http.routers.${router}.rule`] = `Host(\`${options.hostname}\`)`;
+    labels[`traefik.http.routers.${router}.entrypoints`] = "websecure";
+    labels[`traefik.http.routers.${router}.tls.certresolver`] =
+      process.env.TRAEFIK_CERTRESOLVER?.trim() || "letsencrypt";
+    labels[`traefik.http.services.${router}.loadbalancer.server.port`] =
+      String(application.port);
+  }
+
+  const port = `${application.port}/tcp`;
+  const previousContainers = await docker.listContainers({
+    all: true,
+    filters: { label: [`olym.application-id=${application.id}`] },
+  });
+  const container = await docker.createContainer({
+    name: `olym-${application.id}-${options.deploymentId}`,
+    Image: options.imageTag,
+    Env: Object.entries(options.env).map(([key, value]) => `${key}=${value}`),
+    ExposedPorts: { [port]: {} },
+    Labels: labels,
+    HostConfig: {
+      NetworkMode: process.env.OLYM_DOCKER_NETWORK?.trim() || "olym",
+      RestartPolicy: { Name: "unless-stopped" },
+    },
+  });
+  await container.start();
+  await Promise.all(
+    previousContainers.map(async ({ Id, State }) => {
+      const previous = docker.getContainer(Id);
+      if (State === "running") await previous.stop({ t: 10 });
+      await previous.remove();
+    }),
+  );
+  return container.id;
 }

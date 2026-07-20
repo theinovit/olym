@@ -23,6 +23,8 @@ services:
       DATABASE_URL: postgres://olym:${POSTGRES_PASSWORD}@postgres:5432/olym
       REDIS_URL: redis://redis:6379
       DOCKER_HOST: tcp://socket-proxy:2375
+      OLYM_DOCKER_NETWORK: olym
+      TRAEFIK_CERTRESOLVER: letsencrypt
       OLYM_HOST: ${OLYM_HOST}
       OLYM_SECRET: ${OLYM_SECRET}
     volumes:
