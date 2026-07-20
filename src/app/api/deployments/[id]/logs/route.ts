@@ -1,6 +1,10 @@
 import type { Deployment, LogLine } from "@/lib/types";
 import { errorResponse } from "@/server/http";
 import {
+  getDeploymentEventHistory,
+  subscribeToDeploymentEvents,
+} from "@/server/deployment-events";
+import {
   getDeployment,
   getDeploymentLogs,
   isSimulatedDeployment,
@@ -118,6 +122,42 @@ function fallbackLogStream(
   });
 }
 
+function redisLogStream(
+  request: Request,
+  deploymentId: string,
+): ReadableStream<Uint8Array> {
+  let unsubscribe: () => void = () => undefined;
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false;
+      const finish = () => {
+        if (closed) return;
+        closed = true;
+        unsubscribe();
+        controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+        controller.close();
+      };
+      const send = (
+        event: Awaited<ReturnType<typeof getDeploymentEventHistory>>[number],
+      ) => {
+        if (closed) return;
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(event.line)}\n\n`),
+        );
+        if (event.status && terminalStatuses.has(event.status)) finish();
+      };
+
+      unsubscribe = await subscribeToDeploymentEvents(deploymentId, send);
+      const existingEvents = await getDeploymentEventHistory(deploymentId);
+      for (const event of existingEvents) send(event);
+      request.signal.addEventListener("abort", unsubscribe, { once: true });
+    },
+    cancel() {
+      unsubscribe();
+    },
+  });
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -128,8 +168,13 @@ export async function GET(
     return errorResponse(404, "DEPLOYMENT_NOT_FOUND", "Deployment not found.");
   }
 
-  const stream = isSimulatedDeployment(id)
-    ? simulatedLogStream(request, deployment, await getDeploymentLogs(id))
-    : fallbackLogStream(request, id);
+  let stream: ReadableStream<Uint8Array>;
+  if (isSimulatedDeployment(id)) {
+    stream = simulatedLogStream(request, deployment, await getDeploymentLogs(id));
+  } else if (process.env.REDIS_URL?.trim()) {
+    stream = redisLogStream(request, id);
+  } else {
+    stream = fallbackLogStream(request, id);
+  }
   return new Response(stream, { headers: sseHeaders() });
 }

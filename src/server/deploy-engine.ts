@@ -16,6 +16,11 @@ export interface BuildResult {
   commitSha: string;
 }
 
+export type BuildLogWriter = (
+  stream: "stdout" | "stderr" | "system",
+  message: string,
+) => Promise<void>;
+
 function createDockerClient(): Docker {
   const dockerHost = process.env.DOCKER_HOST?.trim();
   if (!dockerHost) return new Docker({ socketPath: "/var/run/docker.sock" });
@@ -31,24 +36,37 @@ function createDockerClient(): Docker {
   });
 }
 
-function followBuild(docker: Docker, stream: NodeJS.ReadableStream): Promise<void> {
+function followBuild(
+  docker: Docker,
+  stream: NodeJS.ReadableStream,
+  writeLog: BuildLogWriter,
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    docker.modem.followProgress(stream, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
+    docker.modem.followProgress(
+      stream,
+      (error) => {
+        if (error) reject(error);
+        else resolve();
+      },
+      (event: { stream?: string; status?: string; error?: string }) => {
+        const message = event.stream?.trim() ?? event.status ?? event.error;
+        if (message) void writeLog(event.error ? "stderr" : "stdout", message);
+      },
+    );
   });
 }
 
 export async function cloneAndBuildApplication(
   deploymentId: string,
   application: BuildApplication,
+  writeLog: BuildLogWriter,
 ): Promise<BuildResult> {
   const workspace = await mkdtemp(path.join(tmpdir(), "olym-build-"));
   const repositoryPath = path.join(workspace, "repository");
   const imageTag = `olym/app-${application.id}:deployment-${deploymentId}`;
 
   try {
+    await writeLog("system", `Cloning ${application.repoUrl} (${application.branch})`);
     const git = simpleGit();
     await git.clone(application.repoUrl, repositoryPath, [
       "--depth",
@@ -58,13 +76,15 @@ export async function cloneAndBuildApplication(
       application.branch,
     ]);
     const commitSha = (await simpleGit(repositoryPath).revparse(["HEAD"])).trim();
+    await writeLog("system", `Repository cloned at ${commitSha}`);
 
     const docker = createDockerClient();
+    await writeLog("system", `Building Docker image ${imageTag}`);
     const archive = await docker.buildImage(
       { context: repositoryPath, src: ["."] },
       { dockerfile: "Dockerfile", t: imageTag, rm: true },
     );
-    await followBuild(docker, archive);
+    await followBuild(docker, archive, writeLog);
 
     return { imageTag, commitSha };
   } finally {
