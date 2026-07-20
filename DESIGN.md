@@ -46,3 +46,10 @@ A partir do Sprint 4, o detalhe do projeto evolui para um **canvas estilo Railwa
 - **Command palette ⌘K** (shadcn Command em Dialog): navegar para projetos/apps/páginas, ações rápidas (New Project, Deploy). Atalho visível no header.
 - Micro-interações: framer-motion apenas em drag do canvas, hover-lift de 1px em cards clicáveis e fade/slide de entrada de páginas (80ms, sutil).
 - Tudo continua **light-first**, denso em respiro, primary preto. O canvas é onde a personalidade aparece; o resto permanece sóbrio.
+
+### Logos oficiais (requisito do fundador)
+
+- Todos os frameworks e serviços exibem seus **logos oficiais** — nunca ícones genéricos lucide: tiles do framework grid (/projects/new), nós do canvas, listas de apps/serviços e catálogo one-click.
+- Fonte: pacote `simple-icons` (SVGs oficiais, MIT): nextdotjs, nuxt, svelte, remix, adonisjs, django, rubyonrails, laravel, symfony, blazor, phoenixframework, postgresql, mysql, mariadb, mongodb, redis, minio, meilisearch, rabbitmq, clickhouse, elasticsearch, qdrant, docker, traefik.
+- Wrapper único `src/components/brand-icon.tsx`: renderiza o path do simple-icons em `currentColor` por padrão (monocromático, discreto) e com a cor oficial da marca (`fill="#{hex}"`) dentro dos tiles do framework grid e nós do canvas — igual à referência OpenShip.
+- Fallback para framework "other"/static: lucide Box/FileCode.
