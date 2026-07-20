@@ -7,7 +7,7 @@ import {
   type Node, type NodeMouseHandler, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { AlertTriangle, ExternalLink, FileText, GitFork, Maximize2, Minimize2, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, FileText, GitFork, LoaderCircle, Maximize2, Minimize2, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { BrandIcon } from "@/components/brand-icon";
@@ -165,9 +165,17 @@ function injectedKey(template?: ServiceTemplate) {
   return "DATABASE_URL";
 }
 
-function LiveLogs({ deploymentId }: { deploymentId?: string }) {
+const deployStages = [
+  { label: "Building application...", completePattern: /build completed|image created|building docker image/i },
+  { label: "Pushing image...", completePattern: /image created|push(?:ing|ed)? image|registry/i },
+  { label: "Provisioning resources...", completePattern: /runtime configuration|application network|provision|container/i },
+  { label: "Deploying...", completePattern: /health check passed|registering route|deployment is running|container .* is running/i },
+];
+
+function LiveLogs({ deploymentId, deploymentStatus, appUrl }: { deploymentId?: string; deploymentStatus?: DeploymentStatus; appUrl?: string }) {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [connected, setConnected] = useState(false);
+  const [streamDone, setStreamDone] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!deploymentId) return;
@@ -176,12 +184,30 @@ function LiveLogs({ deploymentId }: { deploymentId?: string }) {
     source.onmessage = (event) => {
       try { setLines((current) => [...current, JSON.parse(event.data) as LogLine]); } catch { /* malformed lines are ignored */ }
     };
-    source.addEventListener("done", () => { setConnected(false); source.close(); });
+    source.addEventListener("done", () => { setConnected(false); setStreamDone(true); source.close(); });
     source.onerror = () => setConnected(false);
     return () => source.close();
   }, [deploymentId]);
   useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [lines]);
-  return <div className="overflow-hidden rounded-xl border bg-neutral-950 text-neutral-200"><div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-neutral-400"><span className={cn("size-1.5 rounded-full", connected ? "animate-pulse bg-emerald-400" : "bg-neutral-600")} />{connected ? "Streaming live" : lines.length ? "Stream complete" : "Connecting…"}</div><ScrollArea className="h-[270px]"><div className="space-y-1 p-3 font-mono text-[11px] leading-5">{lines.map((line, index) => <div key={`${line.timestamp}-${index}`} className={line.stream === "stderr" ? "text-red-300" : line.stream === "system" ? "text-amber-300" : ""}><span className="mr-2 text-neutral-600">{new Date(line.timestamp).toLocaleTimeString()}</span>{line.message}</div>)}<div ref={endRef} /></div></ScrollArea></div>;
+  const logText = lines.map((line) => line.message).join("\n");
+  const succeeded = deploymentStatus === "running" || (streamDone && /deployment is running|container .* is running/i.test(logText));
+  const failed = deploymentStatus === "failed" || deploymentStatus === "cancelled";
+  const completedStages = deployStages.map((stage) => succeeded || stage.completePattern.test(logText));
+  const currentStage = completedStages.findIndex((complete) => !complete);
+
+  return <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 text-neutral-200 shadow-sm">
+    <div className="flex items-center border-b border-white/10 bg-neutral-900 px-3 py-2.5"><span className="flex gap-1.5" aria-hidden="true"><span className="size-2.5 rounded-full bg-red-500" /><span className="size-2.5 rounded-full bg-amber-400" /><span className="size-2.5 rounded-full bg-emerald-500" /></span><span className="mx-auto font-mono text-[10px] text-neutral-500">deploy.log</span><span className="flex items-center gap-1.5 text-[10px] text-neutral-400"><span className={cn("size-1.5 rounded-full", connected ? "animate-pulse bg-[#f54900]" : "bg-neutral-600")} />{connected ? "Live" : streamDone || lines.length ? "Complete" : "Connecting"}</span></div>
+    <div className="space-y-2 border-b border-white/10 bg-neutral-900/70 p-4 font-mono text-xs">
+      {deployStages.map((stage, index) => <div key={stage.label} className={cn("flex items-center gap-2", completedStages[index] ? "text-neutral-200" : index === currentStage && connected ? "text-[#f54900]" : "text-neutral-600")}>
+        {completedStages[index] ? <Check className="size-3.5 text-emerald-400" /> : index === currentStage && connected ? <LoaderCircle className="size-3.5 animate-spin" /> : <span className="ml-1 size-1.5 rounded-full bg-neutral-700" />}
+        <span>{stage.label}</span>
+      </div>)}
+      {succeeded && <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-white/10 pt-3 text-emerald-400"><span>✓ Done! 🎉</span>{appUrl && <a href={appUrl} target="_blank" rel="noreferrer" className="text-[#f54900] underline decoration-[#f54900]/50 underline-offset-4 hover:text-orange-400">Open application <ExternalLink className="inline size-3" /></a>}</div>}
+      {failed && <div className="mt-3 border-t border-white/10 pt-3 text-red-400">Deployment failed</div>}
+    </div>
+    <div className="border-b border-white/10 px-3 py-2 font-mono text-[10px] tracking-wider text-neutral-500 uppercase">Raw stream</div>
+    <ScrollArea className="h-[220px]"><div className="space-y-1 p-3 font-mono text-[11px] leading-5">{lines.map((line, index) => <div key={`${line.timestamp}-${index}`} className={line.stream === "stderr" ? "text-red-300" : line.stream === "system" ? "text-orange-300" : ""}><span className="mr-2 text-neutral-600">{new Date(line.timestamp).toLocaleTimeString()}</span>{line.message}</div>)}{!lines.length && <p className="text-neutral-600">Waiting for deployment output…</p>}<div ref={endRef} /></div></ScrollArea>
+  </div>;
 }
 
 function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, onDeploy, domains, deployments, logDeploymentId }: { nodeData: CanvasNodeData; activeTab: PanelTab; onTabChange: (tab: PanelTab) => void; onClose: () => void; onDeploy: () => void; domains: Domain[]; deployments: Deployment[]; logDeploymentId?: string }) {
@@ -190,6 +216,7 @@ function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, onDeploy,
   const service = nodeData.service;
   const nodeDomains = app ? domains.filter((domain) => domain.applicationId === app.id) : [];
   const deployment = app ? deployments.find((item) => item.applicationId === app.id) : deployments[0];
+  const appUrl = nodeDomains.length ? `https://${(nodeDomains.find((domain) => domain.isPrimary) ?? nodeDomains[0]).hostname}` : undefined;
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
     <DialogPortal>
       <DialogOverlay style={{ background: "rgba(0, 0, 0, 0.3)", backdropFilter: "none" }} className="duration-[120ms]" />
@@ -200,7 +227,7 @@ function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, onDeploy,
         <TabsContent value="overview" className="space-y-5"><div className="flex items-center justify-between rounded-xl border p-4"><span className="text-muted-foreground">Status</span><StatusBadge status={nodeData.status} /></div><dl className="grid gap-4 rounded-xl border p-4 text-sm">{[[app ? "Framework" : "Service", nodeData.brand], [app ? "Domain" : "Version", app ? nodeDomains.find((domain) => domain.isPrimary)?.hostname ?? "Not configured" : service?.version], ["Install", app?.installCommand ?? "Managed image"], ["Build", app?.buildCommand ?? "Not required"], ["Start", app?.startCommand ?? "Managed by Olym"]].map(([label, value]) => <div key={label} className="grid grid-cols-[90px_1fr] gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="truncate font-mono text-xs">{value}</dd></div>)}</dl></TabsContent>
         <TabsContent value="variables" className="space-y-3">{["DATABASE_URL", "NODE_ENV", "SESSION_SECRET"].map((key) => <div key={key} className="rounded-xl border p-3"><Label className="text-xs">{key}</Label><p className="mt-1 font-mono text-xs text-muted-foreground">••••••••••••••••</p></div>)}</TabsContent>
         <TabsContent value="domains" className="space-y-3">{nodeDomains.length ? nodeDomains.map((domain) => <div key={domain.id} className="flex items-center gap-3 rounded-xl border p-3"><ExternalLink className="size-4 text-muted-foreground" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{domain.hostname}</p><p className="text-xs capitalize text-muted-foreground">SSL {domain.sslStatus}</p></div>{domain.isPrimary && <span className="text-xs text-muted-foreground">Primary</span>}</div>) : <p className="py-10 text-center text-sm text-muted-foreground">No domains configured for this resource.</p>}</TabsContent>
-        <TabsContent value="logs"><LiveLogs deploymentId={logDeploymentId ?? deployment?.id} /></TabsContent>
+        <TabsContent value="logs"><LiveLogs key={logDeploymentId ?? deployment?.id ?? "no-deployment"} deploymentId={logDeploymentId ?? deployment?.id} deploymentStatus={deployment?.status} appUrl={appUrl} /></TabsContent>
         <TabsContent value="settings"><div className="rounded-xl border border-red-200 p-4 dark:border-red-900"><div className="flex gap-3"><AlertTriangle className="size-4 text-red-600" /><div><h3 className="font-medium text-red-700 dark:text-red-400">Danger zone</h3><p className="mt-1 text-xs text-muted-foreground">Permanently remove this resource and its configuration.</p><Button variant="destructive" size="sm" className="mt-4"><Trash2 className="size-3.5" />Delete resource</Button></div></div></div></TabsContent>
       </div>
     </Tabs>
