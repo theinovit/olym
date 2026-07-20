@@ -87,3 +87,11 @@ O Sheet de borda de tela morre. Clicar num nó passa a funcionar como no Maestri
 3. Dentro do card: as mesmas tabs Overview | Variables | Domains | Logs (SSE) | Settings — conteúdo idêntico ao que existia no Sheet, só muda o continente.
 4. Fechar: X no card, Esc, ou clicar no vazio do canvas. Um card por vez.
 5. O canvas continua 100% interativo com o card aberto (arrastar outros nós, pan).
+
+### v3.3 — Edges estilo Maestri de verdade (feedback do fundador)
+
+1. **Morrem as bolinhas de handle.** Nenhum dot visível nos nós. A conexão é do **bloco inteiro**:
+   - Edges usam o padrão **floating edges** do React Flow: a linha ancora dinamicamente no ponto mais próximo do PERÍMETRO do card (recalcula quando o nó é arrastado), nunca num ponto fixo com bolinha.
+   - Para criar conexão por arraste: handle invisível cobrindo o nó inteiro (overlay inset-0, opacity 0) — arrasta de qualquer lugar do card de origem e solta em qualquer lugar do card de destino. Cursor crosshair na borda para indicar.
+2. **Toda edge é pontilhada** (padrão Maestri): strokeDasharray tipo "7 7", stroke neutral-400/70 (light) / neutral-500/70 (dark), 1.5px. Edge ativa (deploy) mantém ember + animação de fluxo do dash.
+3. **Barriga de pipa mais pronunciada**: sag = min(120, dist*0.35) — a corda fica visivelmente frouxa como no Maestri, mesmo em distâncias médias.
