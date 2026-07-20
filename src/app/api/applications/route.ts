@@ -8,19 +8,52 @@ import {
   listApplications,
 } from "@/server/services/applications";
 
-const applicationSchema = z.object({
-  projectId: z.string().trim().min(1),
-  environment: z.enum(["production", "staging", "development"]).default("production"),
-  name: z.string().trim().min(1),
-  framework: z.enum(["nextjs", "nuxt", "sveltekit", "remix", "adonisjs", "django", "rails", "laravel", "symfony", "blazor", "phoenix", "static", "other"]),
-  repoUrl: z.string().trim().url(),
-  branch: z.string().trim().min(1).default("main"),
-  buildCommand: z.string().nullable().default(null),
-  installCommand: z.string().nullable().default(null),
-  startCommand: z.string().nullable().default(null),
-  outputDirectory: z.string().nullable().default(null),
-  port: z.number().int().min(1).max(65535).default(3000),
-});
+const applicationSchema = z
+  .object({
+    projectId: z.string().trim().min(1),
+    environment: z
+      .enum(["production", "staging", "development"])
+      .default("production"),
+    name: z.string().trim().min(1),
+    framework: z.enum([
+      "nextjs",
+      "nuxt",
+      "sveltekit",
+      "remix",
+      "adonisjs",
+      "django",
+      "rails",
+      "laravel",
+      "symfony",
+      "blazor",
+      "phoenix",
+      "static",
+      "other",
+    ]),
+    repoUrl: z.string().trim().url().optional(),
+    dockerImage: z
+      .string()
+      .trim()
+      .min(1)
+      .max(512)
+      .regex(/^\S+$/, "Docker image must not contain whitespace.")
+      .optional(),
+    branch: z.string().trim().min(1).default("main"),
+    buildCommand: z.string().nullable().default(null),
+    installCommand: z.string().nullable().default(null),
+    startCommand: z.string().nullable().default(null),
+    outputDirectory: z.string().nullable().default(null),
+    port: z.number().int().min(1).max(65535).default(3000),
+  })
+  .superRefine((application, context) => {
+    if (Boolean(application.repoUrl) === Boolean(application.dockerImage)) {
+      context.addIssue({
+        code: "custom",
+        message: "Provide exactly one deploy source: repoUrl or dockerImage.",
+        path: ["repoUrl"],
+      });
+    }
+  });
 
 export async function GET() {
   return dataResponse(await listApplications());
@@ -38,22 +71,31 @@ export async function POST(request: Request) {
     return errorResponse(400, "VALIDATION_ERROR", result.error.issues[0]?.message ?? "Invalid request body.");
   }
   try {
-    const repository = await validateRepository(result.data.repoUrl);
-    if (!repository.accessible) {
-      return errorResponse(
-        400,
-        "REPOSITORY_NOT_ACCESSIBLE",
-        "Repository could not be accessed.",
-      );
+    if (result.data.repoUrl) {
+      const repository = await validateRepository(result.data.repoUrl);
+      if (!repository.accessible) {
+        return errorResponse(
+          400,
+          "REPOSITORY_NOT_ACCESSIBLE",
+          "Repository could not be accessed.",
+        );
+      }
+      if (!repository.branches.includes(result.data.branch)) {
+        return errorResponse(
+          400,
+          "REPOSITORY_BRANCH_NOT_FOUND",
+          "Repository branch could not be found.",
+        );
+      }
     }
-    if (!repository.branches.includes(result.data.branch)) {
-      return errorResponse(
-        400,
-        "REPOSITORY_BRANCH_NOT_FOUND",
-        "Repository branch could not be found.",
-      );
-    }
-    return dataResponse(await createApplication(result.data), { status: 202 });
+    return dataResponse(
+      await createApplication({
+        ...result.data,
+        repoUrl: result.data.repoUrl ?? null,
+        dockerImage: result.data.dockerImage ?? null,
+      }),
+      { status: 202 },
+    );
   } catch (error) {
     if (error instanceof DomainError) {
       return errorResponse(error.status, error.code, error.message);
