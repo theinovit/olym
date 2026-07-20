@@ -256,7 +256,7 @@ function AddPalette({ open, onOpenChange, onAdd }: { open: boolean; onOpenChange
   </aside>;
 }
 
-export function ProjectCanvas({ project, applications, services, templates, domains, deployments, bindings, activeApplicationIds }: { project: Project; applications: Application[]; services: ServiceInstance[]; templates: ServiceTemplate[]; domains: Domain[]; deployments: Deployment[]; bindings: Binding[]; activeApplicationIds: string[] }) {
+export function ProjectCanvas({ project, applications, services, templates, domains, deployments, bindings, activeApplicationIds, addOpen, onAddOpenChange }: { project: Project; applications: Application[]; services: ServiceInstance[]; templates: ServiceTemplate[]; domains: Domain[]; deployments: Deployment[]; bindings: Binding[]; activeApplicationIds: string[]; addOpen: boolean; onAddOpenChange: (open: boolean) => void }) {
   const initialNodes = useMemo<CanvasNode[]>(() => [...applications.map((app, index) => ({ id: app.id, type: "resource" as const, position: { x: 80 + index * 300, y: 55 }, data: { kind: "application" as const, name: app.name, status: app.status, detail: domains.find((domain) => domain.applicationId === app.id && domain.isPrimary)?.hostname ?? app.framework, brand: app.framework, application: app } })), ...services.map((service, index) => { const template = templates.find((item) => item.id === service.templateId); return { id: service.id, type: "resource" as const, position: { x: 150 + index * 300, y: 340 }, data: { kind: "service" as const, name: service.name, status: service.status, detail: `${template?.name ?? "Service"} ${service.version}`, brand: template?.id ?? service.templateId, service, template } }; })], [applications, domains, services, templates]);
   const initialEdges = useMemo<Edge[]>(() => bindings.filter((binding) => applications.some((app) => app.id === binding.applicationId) && services.some((service) => service.id === binding.serviceInstanceId)).map((binding) => ({ id: binding.id, source: binding.applicationId, target: binding.serviceInstanceId, type: "kite", data: { active: activeApplicationIds.includes(binding.applicationId), injectedVarKey: binding.injectedVarKey } })), [activeApplicationIds, applications, bindings, services]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -264,7 +264,6 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [configTab, setConfigTab] = useState<PanelTab>("overview");
-  const [addOpen, setAddOpen] = useState(false);
   const [runtimeDeployments, setRuntimeDeployments] = useState<Deployment[]>([]);
   const [logDeploymentByApp, setLogDeploymentByApp] = useState<Record<string, string>>({});
   const flowRef = useRef<ReactFlowInstance<CanvasNode, Edge> | null>(null);
@@ -286,12 +285,12 @@ export function ProjectCanvas({ project, applications, services, templates, doma
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === "a" && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); setAddOpen((value) => !value); }
+      if (event.key.toLowerCase() === "a" && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); onAddOpenChange(!addOpen); }
       if (event.key === "Escape") setConfigNodeId(null);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [addOpen, onAddOpenChange]);
 
   const openConfig = (nodeId: string, tab: PanelTab = "overview") => {
     if (!nodes.some((item) => item.id === nodeId)) return;
@@ -406,9 +405,9 @@ export function ProjectCanvas({ project, applications, services, templates, doma
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="currentColor" className="text-neutral-300/20 dark:text-neutral-700/20" />
         <Controls showInteractive={false} style={{ left: 96, bottom: 16 }} className="!overflow-hidden !rounded-lg !border-neutral-200 !bg-white !shadow-sm dark:!border-neutral-800 dark:!bg-neutral-900 [&_button]:!border-neutral-200 [&_button]:!bg-white [&_button]:!text-neutral-700 dark:[&_button]:!border-neutral-800 dark:[&_button]:!bg-neutral-900 dark:[&_button]:!text-neutral-300" />
       </ReactFlow></NodeActionContext.Provider>
-      <AddPalette open={addOpen} onOpenChange={setAddOpen} onAdd={addResource} />
-      <Button className="canvas-add-button absolute rounded-full shadow-sm" onClick={() => setAddOpen((value) => !value)}><Plus className="size-4" />Add <kbd className="rounded border border-white/20 px-1 text-[10px]">A</kbd></Button>
-      {!nodes.length && <EmptyState icon={PackageOpen} title="Add your first service" description="Start with an application or managed database." action={<Button onClick={() => setAddOpen(true)}><Plus className="size-4" />Add resource</Button>} className="absolute top-1/2 left-1/2 z-10 w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-dashed bg-white/90 shadow-sm backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/90" />}
+      <AddPalette open={addOpen} onOpenChange={onAddOpenChange} onAdd={addResource} />
+      <Button className="canvas-add-button absolute rounded-full shadow-sm" onClick={() => onAddOpenChange(!addOpen)}><Plus className="size-4" />Add <kbd className="rounded border border-white/20 px-1 text-[10px]">A</kbd></Button>
+      {!nodes.length && <EmptyState icon={PackageOpen} title="Add your first service" description="Start with an application or managed database." action={<Button onClick={() => onAddOpenChange(true)}><Plus className="size-4" />Add resource</Button>} className="absolute top-1/2 left-1/2 z-10 w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-dashed bg-white/90 shadow-sm backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/90" />}
     </div>
     {selectedNode && <NodeConfigDialog key={selectedNode.id} nodeData={selectedNode.data} activeTab={configTab} onTabChange={(tab) => openConfig(selectedNode.id, tab)} onClose={closeConfig} onDeploy={() => void deployApplication(selectedNode.id)} domains={domains} deployments={allDeployments} logDeploymentId={selectedNode.data.application ? logDeploymentByApp[selectedNode.data.application.id] : undefined} />}
   </>;
