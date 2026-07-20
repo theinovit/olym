@@ -1,5 +1,10 @@
+import { randomUUID } from "node:crypto";
+
+import { z } from "zod";
+
 import type { DeploymentStatus } from "@/lib/types";
 import { dataResponse, errorResponse } from "@/server/http";
+import { enqueueDeployment } from "@/server/queue";
 import { listDeployments } from "@/server/services/deployments";
 
 const deploymentStatuses = new Set<DeploymentStatus>([
@@ -10,6 +15,10 @@ const deploymentStatuses = new Set<DeploymentStatus>([
   "failed",
   "cancelled",
 ]);
+
+const createDeploymentSchema = z.object({
+  applicationId: z.string().trim().min(1),
+});
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -30,4 +39,36 @@ export async function GET(request: Request) {
       ? deployments.filter((deployment) => deployment.status === status)
       : deployments,
   );
+}
+
+export async function POST(request: Request) {
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(400, "INVALID_JSON", "Request body must be valid JSON.");
+  }
+
+  const result = createDeploymentSchema.safeParse(body);
+  if (!result.success) {
+    return errorResponse(
+      400,
+      "VALIDATION_ERROR",
+      result.error.issues[0]?.message ?? "Invalid request body.",
+    );
+  }
+
+  const deploymentId = randomUUID();
+
+  try {
+    await enqueueDeployment({
+      deploymentId,
+      applicationId: result.data.applicationId,
+    });
+  } catch {
+    // The API remains usable in local/simulated mode when Redis is unavailable.
+  }
+
+  return dataResponse({ deploymentId, status: "queued" as const }, { status: 202 });
 }

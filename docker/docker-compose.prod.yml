@@ -16,15 +16,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      socket-proxy:
+        condition: service_started
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://hefesto:${POSTGRES_PASSWORD}@postgres:5432/hefesto
       REDIS_URL: redis://redis:6379
+      DOCKER_HOST: tcp://socket-proxy:2375
       HEFESTO_HOST: ${HEFESTO_HOST}
       HEFESTO_SECRET: ${HEFESTO_SECRET}
     volumes:
-      # Hefesto orchestrates app containers on the host Docker engine.
-      - /var/run/docker.sock:/var/run/docker.sock
       - hefesto-data:/data
     labels:
       - traefik.enable=true
@@ -32,6 +33,20 @@ services:
       - traefik.http.routers.hefesto.entrypoints=websecure
       - traefik.http.routers.hefesto.tls.certresolver=letsencrypt
       - traefik.http.services.hefesto.loadbalancer.server.port=3000
+    networks:
+      - hefesto
+
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      SERVICES: 1
+      POST: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - hefesto
 
@@ -69,8 +84,12 @@ services:
   traefik:
     image: traefik:v3.3
     restart: unless-stopped
+    depends_on:
+      socket-proxy:
+        condition: service_started
     command:
       - --providers.docker=true
+      - --providers.docker.endpoint=tcp://socket-proxy:2375
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
@@ -83,7 +102,6 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik-acme:/acme
     networks:
       - hefesto
