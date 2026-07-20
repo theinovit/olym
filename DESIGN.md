@@ -49,9 +49,10 @@ A partir do Sprint 4, o detalhe do projeto evolui para um **canvas estilo Railwa
 
 ### Logos oficiais (requisito do fundador)
 
-- Todos os frameworks e serviços exibem seus **logos oficiais** — nunca ícones genéricos lucide: tiles do framework grid (/projects/new), nós do canvas, listas de apps/serviços e catálogo one-click.
-- Fonte: pacote `simple-icons` (SVGs oficiais, MIT): nextdotjs, nuxt, svelte, remix, adonisjs, django, rubyonrails, laravel, symfony, blazor, phoenixframework, postgresql, mysql, mariadb, mongodb, redis, minio, meilisearch, rabbitmq, clickhouse, elasticsearch, qdrant, docker, traefik.
-- Wrapper único `src/components/brand-icon.tsx`: renderiza o path do simple-icons em `currentColor` por padrão (monocromático, discreto) e com a cor oficial da marca (`fill="#{hex}"`) dentro dos tiles do framework grid e nós do canvas — igual à referência OpenShip.
+- Todos os frameworks e serviços exibem seus **logos oficiais** — nunca ícones genéricos lucide: nós do canvas, Add Palette, listas de apps/serviços e catálogo one-click.
+- Fonte primária: **devicon** (https://devicon.dev — pacote npm `devicon`): usar os SVGs coloridos oficiais (variante `original`/`original-wordmark` conforme contexto; `plain` para contextos monocromáticos). Cobre nextjs, nuxtjs, svelte, remix (checar), django, rails, laravel, symfony, phoenix, postgresql, mysql, mariadb, mongodb, redis, rabbitmq, elasticsearch, docker etc.
+- Fallback para marcas que o devicon não tiver (minio, meilisearch, qdrant, clickhouse, traefik…): `simple-icons`, renderizado com a cor oficial da marca.
+- Wrapper único `src/components/brand-icon.tsx`: recebe o slug (framework ou template) e resolve devicon→simple-icons→lucide Box (último caso). Import estático dos SVGs (self-hosted, nada de CDN em runtime).
 - Fallback para framework "other"/static: lucide Box/FileCode.
 
 ---
