@@ -4,6 +4,7 @@ import path from "node:path";
 
 import Docker from "dockerode";
 import { simpleGit } from "simple-git";
+import { redactSecrets } from "./redaction";
 
 export interface BuildApplication {
   id: string;
@@ -118,7 +119,12 @@ function followBuild(
       },
       (event: { stream?: string; status?: string; error?: string }) => {
         const message = event.stream?.trim() ?? event.status ?? event.error;
-        if (message) void writeLog(event.error ? "stderr" : "stdout", message);
+        if (message) {
+          void writeLog(
+            event.error ? "stderr" : "stdout",
+            redactSecrets(message),
+          );
+        }
       },
     );
   });
@@ -134,7 +140,10 @@ export async function cloneAndBuildApplication(
   const imageTag = `olym/app-${application.id}:deployment-${deploymentId}`;
 
   try {
-    await writeLog("system", `Cloning ${application.repoUrl} (${application.branch})`);
+    await writeLog(
+      "system",
+      redactSecrets(`Cloning ${application.repoUrl} (${application.branch})`),
+    );
     const git = simpleGit();
     await git.clone(application.repoUrl, repositoryPath, [
       "--depth",

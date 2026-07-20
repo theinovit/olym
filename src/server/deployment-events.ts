@@ -1,6 +1,7 @@
 import IORedis from "ioredis";
 
 import type { DeploymentStatus, LogLine } from "@/lib/types";
+import { redactSecrets } from "./redaction";
 
 export interface DeploymentEvent {
   line: LogLine;
@@ -21,7 +22,10 @@ export async function publishDeploymentEvent(
   deploymentId: string,
   event: DeploymentEvent,
 ): Promise<void> {
-  const payload = JSON.stringify(event);
+  const payload = JSON.stringify({
+    ...event,
+    line: { ...event.line, message: redactSecrets(event.line.message) },
+  } satisfies DeploymentEvent);
   await redis
     .multi()
     .rpush(historyKey(deploymentId), payload)

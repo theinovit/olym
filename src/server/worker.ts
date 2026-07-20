@@ -9,6 +9,7 @@ import {
   startApplicationContainer,
 } from "./deploy-engine";
 import { publishDeploymentEvent } from "./deployment-events";
+import { redactSecrets } from "./redaction";
 
 interface DeploymentJobData {
   deploymentId: string;
@@ -24,9 +25,10 @@ async function processDeployment(job: Job<DeploymentJobData>) {
     stream: "stdout" | "stderr" | "system",
     message: string,
   ) => {
-    await job.log(message);
+    const safeMessage = redactSecrets(message);
+    await job.log(safeMessage);
     await publishDeploymentEvent(eventRedis, job.data.deploymentId, {
-      line: { timestamp: new Date().toISOString(), stream, message },
+      line: { timestamp: new Date().toISOString(), stream, message: safeMessage },
     });
   };
   try {
@@ -145,7 +147,9 @@ async function processDeployment(job: Job<DeploymentJobData>) {
       line: {
         timestamp: new Date().toISOString(),
         stream: "stderr",
-        message: error instanceof Error ? error.message : "Deployment failed",
+        message: redactSecrets(
+          error instanceof Error ? error.message : "Deployment failed",
+        ),
       },
       status: "failed",
     });
