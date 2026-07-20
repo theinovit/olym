@@ -11,6 +11,8 @@ import {
 import type { Binding } from "@/lib/types";
 
 import { isDatabaseEnabled } from "../env";
+import { ConflictError, NotFoundError } from "../errors";
+import { getApplication } from "./applications";
 import { serializeDates } from "./mappers";
 import { getService } from "./services";
 
@@ -41,19 +43,36 @@ export async function createBinding(input: {
   applicationId: string;
   serviceInstanceId: string;
 }): Promise<Binding> {
+  const [application, serviceInstance] = await Promise.all([
+    getApplication(input.applicationId),
+    getService(input.serviceInstanceId),
+  ]);
+  if (!application) {
+    throw new NotFoundError(`Application not found: ${input.applicationId}`);
+  }
+  if (!serviceInstance) {
+    throw new NotFoundError(
+      `Service instance not found: ${input.serviceInstanceId}`,
+    );
+  }
+
   if (!isDatabaseEnabled()) {
     const existing = simulatedBindings.find(
       (binding) => binding.applicationId === input.applicationId && binding.serviceInstanceId === input.serviceInstanceId,
     );
-    if (existing) return existing;
+    if (existing) {
+      throw new ConflictError(
+        "BINDING_ALREADY_EXISTS",
+        "This application is already bound to this service instance.",
+      );
+    }
 
-    const service = await getService(input.serviceInstanceId);
     const mockService = mockServiceInstances.find((item) => item.id === input.serviceInstanceId);
-    const template = mockServiceTemplates.find((item) => item.id === (service?.templateId ?? mockService?.templateId));
+    const template = mockServiceTemplates.find((item) => item.id === (serviceInstance.templateId ?? mockService?.templateId));
     const binding: Binding = {
       id: randomUUID(),
       ...input,
-      injectedVarKey: injectedVarKey(template?.name ?? service?.templateId ?? "service"),
+      injectedVarKey: injectedVarKey(template?.name ?? serviceInstance.templateId),
       createdAt: new Date().toISOString(),
     };
     simulatedBindings.push(binding);
@@ -66,7 +85,23 @@ export async function createBinding(input: {
     .innerJoin(schema.serviceTemplates, eq(schema.serviceInstances.templateId, schema.serviceTemplates.id))
     .where(eq(schema.serviceInstances.id, input.serviceInstanceId))
     .limit(1);
-  if (!service) throw new Error(`Service instance not found: ${input.serviceInstanceId}`);
+  if (!service) {
+    throw new NotFoundError(
+      `Service template not found for instance: ${input.serviceInstanceId}`,
+    );
+  }
+
+  const [existing] = await getDb()
+    .select()
+    .from(schema.bindings)
+    .where(and(eq(schema.bindings.applicationId, input.applicationId), eq(schema.bindings.serviceInstanceId, input.serviceInstanceId)))
+    .limit(1);
+  if (existing) {
+    throw new ConflictError(
+      "BINDING_ALREADY_EXISTS",
+      "This application is already bound to this service instance.",
+    );
+  }
 
   const [created] = await getDb()
     .insert(schema.bindings)
@@ -74,13 +109,10 @@ export async function createBinding(input: {
     .onConflictDoNothing()
     .returning();
   if (created) return serializeDates<Binding>(created);
-
-  const [existing] = await getDb()
-    .select()
-    .from(schema.bindings)
-    .where(and(eq(schema.bindings.applicationId, input.applicationId), eq(schema.bindings.serviceInstanceId, input.serviceInstanceId)))
-    .limit(1);
-  return serializeDates<Binding>(existing);
+  throw new ConflictError(
+    "BINDING_ALREADY_EXISTS",
+    "This application is already bound to this service instance.",
+  );
 }
 
 export async function deleteBinding(id: string): Promise<boolean> {

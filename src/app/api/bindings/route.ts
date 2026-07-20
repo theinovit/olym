@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { dataResponse, errorResponse } from "@/server/http";
+import { DomainError } from "@/server/errors";
 import {
   createBinding,
   deleteBinding,
@@ -13,8 +14,20 @@ const createBindingSchema = z.object({
 });
 const deleteBindingSchema = z.object({ id: z.string().trim().min(1) });
 
+function domainErrorResponse(error: unknown): Response {
+  if (error instanceof DomainError) {
+    return errorResponse(error.status, error.code, error.message);
+  }
+  console.error("Bindings API error", error);
+  return errorResponse(500, "INTERNAL_ERROR", "An unexpected error occurred.");
+}
+
 export async function GET() {
-  return dataResponse(await listBindings());
+  try {
+    return dataResponse(await listBindings());
+  } catch (error) {
+    return domainErrorResponse(error);
+  }
 }
 
 export async function POST(request: Request) {
@@ -28,7 +41,11 @@ export async function POST(request: Request) {
   if (!result.success) {
     return errorResponse(400, "VALIDATION_ERROR", result.error.issues[0]?.message ?? "Invalid binding.");
   }
-  return dataResponse(await createBinding(result.data), { status: 201 });
+  try {
+    return dataResponse(await createBinding(result.data), { status: 201 });
+  } catch (error) {
+    return domainErrorResponse(error);
+  }
 }
 
 export async function DELETE(request: Request) {
@@ -45,8 +62,12 @@ export async function DELETE(request: Request) {
   if (!result.success) {
     return errorResponse(400, "VALIDATION_ERROR", result.error.issues[0]?.message ?? "Invalid binding id.");
   }
-  if (!(await deleteBinding(result.data.id))) {
-    return errorResponse(404, "BINDING_NOT_FOUND", "Binding not found.");
+  try {
+    if (!(await deleteBinding(result.data.id))) {
+      return errorResponse(404, "BINDING_NOT_FOUND", "Binding not found.");
+    }
+    return new Response(null, { status: 204 });
+  } catch (error) {
+    return domainErrorResponse(error);
   }
-  return new Response(null, { status: 204 });
 }
