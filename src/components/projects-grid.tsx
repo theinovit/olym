@@ -60,13 +60,14 @@ export function ProjectsGrid() {
             const latestDeploy = mockDeployments.filter((deployment) => appIds.has(deployment.applicationId)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
             const environments = [...new Set(apps.map((app) => app.environment))];
             return (
-              <Card key={project.id} className="[--card-spacing:--spacing(5)] transition-colors hover:ring-foreground/20">
+              <Card key={project.id} className="relative [--card-spacing:--spacing(5)] transition-colors hover:ring-foreground/20">
+                <Link href={`/projects/${project.slug}`} className="absolute inset-0 z-10 rounded-xl" aria-label={`Open ${project.name}`} />
                 <CardHeader className="grid-cols-[1fr_auto]">
                   <div className="min-w-0">
                     <CardTitle className="truncate text-base font-semibold">{project.name}</CardTitle>
                     <p className="mt-1 line-clamp-2 min-h-10 text-sm text-muted-foreground">{project.description}</p>
                   </div>
-                  <Button variant="ghost" size="icon-sm" aria-label={`Open ${project.name}`}><ArrowUpRight className="size-4" /></Button>
+                  <Button variant="ghost" size="icon-sm" tabIndex={-1}><ArrowUpRight className="size-4" /></Button>
                 </CardHeader>
                 <CardContent className="mt-auto space-y-4">
                   <div className="flex flex-wrap gap-1.5">
