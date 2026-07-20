@@ -95,3 +95,13 @@ O Sheet de borda de tela morre. Clicar num nó passa a funcionar como no Maestri
    - Para criar conexão por arraste: handle invisível cobrindo o nó inteiro (overlay inset-0, opacity 0) — arrasta de qualquer lugar do card de origem e solta em qualquer lugar do card de destino. Cursor crosshair na borda para indicar.
 2. **Toda edge é pontilhada** (padrão Maestri): strokeDasharray tipo "7 7", stroke neutral-400/70 (light) / neutral-500/70 (dark), 1.5px. Edge ativa (deploy) mantém ember + animação de fluxo do dash.
 3. **Barriga de pipa mais pronunciada**: sag = min(120, dist*0.35) — a corda fica visivelmente frouxa como no Maestri, mesmo em distâncias médias.
+
+### v3.4 — Config em nível de tela + conexão pela borda (feedback do fundador com screenshots Maestri)
+
+1. **O card ancorado ao nó morre** (clipava na borda do canvas). A config abre como **painel em nível de TELA** (fora do transform do React Flow), estilo command-center:
+   - Modal centrado grande (~720px, max-h 80vh), backdrop escurecido leve (bg-black/30) SEM blur pesado, rounded-2xl, animação scale-in 120ms.
+   - Header: logo + nome + status badge + botão expand (fullscreen toggle: vira inset-4) + X.
+   - Mesmas tabs Overview | Variables | Domains | Logs (SSE) | Settings, com respiro (conteúdo max-w prose, p-6).
+   - Nunca clipa, nunca cobre o nó de origem permanentemente (o canvas fica visível escurecido atrás; Esc fecha).
+2. **Pill de ações = toolbar do Maestri** (referência: pill escura arredondada com ícones separados por divisores): rounded-full, bg-neutral-900/90 no dark e bg-white/95 no light, ícones ghost com divisores verticais 1px, ação destrutiva separada no fim, badge numérico opcional (ex.: deployments ativos) em pill azul/ember.
+3. **Conexão pela BORDA do nó** (como Maestri): nó selecionado/hover mostra **borda tracejada** sutil; clicar+arrastar A PARTIR DA BORDA (faixa de 12px, cursor crosshair) puxa a linha de conexão; arrastar do miolo do card move o nó. Os handles invisíveis existem só na faixa de borda.
