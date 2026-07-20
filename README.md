@@ -1,4 +1,7 @@
-# Olym
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="public/brand/olym-horizontal-white.svg">
+  <img alt="Olym" src="public/brand/olym-horizontal-black.svg" height="60">
+</picture>
 
 **Self-hosted PaaS with an AI-native core.** Deploy, diagnose, and roll back your apps on your own server through a spatial, canvas-first dashboard — think Vercel/Coolify, but the agent reads your build logs, explains failures in plain language, and can suggest or apply fixes.
 

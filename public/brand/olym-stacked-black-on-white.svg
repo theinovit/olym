@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 330">
+<rect width="360" height="330" rx="28" fill="#FFFFFF"/>
+<g transform="translate(120 30) scale(1.0)">
+<path d="M34 74
+C21 74 12 65 12 53
+C12 42 20 33 31 32
+C35 20 46 12 59 12
+C72 12 83 20 87 32
+C98 33 106 42 106 53
+C106 65 97 74 84 74"
+fill="none" stroke="#000000" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M29 79 L59 40 L88 79"
+fill="none" stroke="#000000" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter"/>
+<path d="M68 55 L88 79"
+fill="none" stroke="#000000" stroke-width="5" stroke-linecap="square"/>
+</g>
+<text x="180" y="255" text-anchor="middle" fill="#000000"
+      font-family="Arial, Helvetica, sans-serif" font-size="64"
+      font-weight="600" letter-spacing="16">OLYM</text>
+</svg>
