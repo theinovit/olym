@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Background, BackgroundVariant, Controls, Handle, Position, ReactFlow,
+  Background, BackgroundVariant, Controls, Handle, NodeToolbar, Position, ReactFlow,
   useEdgesState, useNodesState, type Connection, type Edge, type EdgeProps,
   type Node, type NodeMouseHandler, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
-import { AlertTriangle, ExternalLink, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileText, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { BrandIcon } from "@/components/brand-icon";
@@ -15,8 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { Application, AppStatus, Binding, Deployment, Domain, Framework, LogLine, Project, ServiceInstance, ServiceTemplate } from "@/lib/types";
 
@@ -31,6 +31,21 @@ type CanvasNodeData = {
   template?: ServiceTemplate;
 };
 type CanvasNode = Node<CanvasNodeData, "resource">;
+type PanelTab = "overview" | "variables" | "domains" | "logs" | "settings";
+type NodeActionContextValue = {
+  selectedNodeId: string | null;
+  configNodeId: string | null;
+  configSide: Position.Left | Position.Right;
+  configTab: PanelTab;
+  domains: Domain[];
+  deployments: Deployment[];
+  openConfig: (nodeId: string, tab?: PanelTab) => void;
+  closeConfig: () => void;
+  deploy: (nodeId: string) => void;
+  restart: (nodeId: string) => void;
+  remove: (nodeId: string) => void;
+};
+const NodeActionContext = createContext<NodeActionContextValue | null>(null);
 
 const frameworks: { id: Framework; name: string }[] = [
   { id: "nextjs", name: "Next.js" }, { id: "nuxt", name: "Nuxt" },
@@ -48,9 +63,21 @@ const glowByStatus: Record<AppStatus, string> = {
   stopped: "",
 };
 
-function ResourceNode({ data }: NodeProps<CanvasNode>) {
+function ToolbarAction({ label, icon: Icon, onClick, danger = false }: { label: string; icon: typeof Rocket; onClick: () => void; danger?: boolean }) {
+  return <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className={cn("nodrag nopan", danger && "text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950")} onClick={(event) => { event.stopPropagation(); onClick(); }}><Icon className="size-3.5" /><span className="sr-only">{label}</span></Button></TooltipTrigger><TooltipContent side="top" sideOffset={6}>{label}</TooltipContent></Tooltip>;
+}
+
+const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProps<CanvasNode>) {
+  const actions = useContext(NodeActionContext);
   const pulses = data.status === "running" || data.status === "building";
-  return <div className={cn("w-[220px] rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-transform hover:-translate-y-px dark:border-neutral-800 dark:bg-neutral-900", glowByStatus[data.status])}>
+  const configVisible = actions?.configNodeId === id;
+  return <div className={cn("w-[220px] rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-transform hover:-translate-y-px dark:border-neutral-800 dark:bg-neutral-900", glowByStatus[data.status], selected && "ring-2 ring-orange-600/30")}>
+    <NodeToolbar isVisible={selected && actions?.selectedNodeId === id} position={Position.Top} offset={10} className="nodrag nopan flex items-center gap-0.5 rounded-full border bg-white p-1 shadow-sm dark:bg-neutral-900">
+      <TooltipProvider><ToolbarAction label="Deploy" icon={Rocket} onClick={() => actions?.deploy(id)} /><ToolbarAction label="Restart" icon={RefreshCw} onClick={() => actions?.restart(id)} /><ToolbarAction label="Logs" icon={FileText} onClick={() => actions?.openConfig(id, "logs")} /><ToolbarAction label="Settings" icon={Settings} onClick={() => actions?.openConfig(id, "settings")} /><span className="mx-0.5 h-5 w-px bg-border" /><ToolbarAction label="Delete" icon={Trash2} danger onClick={() => actions?.remove(id)} /></TooltipProvider>
+    </NodeToolbar>
+    <NodeToolbar isVisible={configVisible} position={actions?.configSide ?? Position.Right} offset={18} className="nodrag nopan nowheel">
+      {actions && <NodeConfigCard key={id} nodeData={data} activeTab={actions.configTab} onTabChange={(tab) => actions.openConfig(id, tab)} onClose={actions.closeConfig} domains={actions.domains} deployments={actions.deployments} />}
+    </NodeToolbar>
     <Handle type="target" position={Position.Top} className="!size-2.5 !border-2 !border-white !bg-neutral-400 dark:!border-neutral-900" />
     <div className="flex items-start gap-3">
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-neutral-50 dark:bg-neutral-950"><BrandIcon name={data.brand} officialColor className="size-4" /></span>
@@ -59,9 +86,9 @@ function ResourceNode({ data }: NodeProps<CanvasNode>) {
     <div className="mt-3 flex items-center justify-between gap-2 border-t pt-3"><span className="truncate text-[11px] capitalize text-muted-foreground">{data.brand}</span><StatusBadge status={data.status} /></div>
     <Handle type="source" position={Position.Bottom} className="!size-2.5 !border-2 !border-white !bg-neutral-400 dark:!border-neutral-900" />
   </div>;
-}
+});
 
-function KiteEdge({ id, sourceX, sourceY, targetX, targetY, markerEnd, style, data }: EdgeProps) {
+const KiteEdge = memo(function KiteEdge({ id, sourceX, sourceY, targetX, targetY, markerEnd, style, data }: EdgeProps) {
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
   const dist = Math.sqrt(dx * dx + dy * dy);
@@ -69,7 +96,7 @@ function KiteEdge({ id, sourceX, sourceY, targetX, targetY, markerEnd, style, da
   const path = `M ${sourceX},${sourceY} C ${sourceX + dx * 0.25},${sourceY + sag} ${sourceX + dx * 0.75},${targetY + sag} ${targetX},${targetY}`;
   const active = Boolean(data?.active);
   return <path id={id} d={path} markerEnd={markerEnd} className="react-flow__edge-path" style={{ ...style, fill: "none", stroke: active ? "#f54900" : "rgba(163,163,163,.6)", strokeWidth: 1.5, strokeDasharray: active ? "7 6" : undefined }}>{active && <animate attributeName="stroke-dashoffset" from="26" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
-}
+});
 
 const nodeTypes = { resource: ResourceNode };
 const edgeTypes = { kite: KiteEdge };
@@ -102,23 +129,23 @@ function LiveLogs({ deploymentId }: { deploymentId?: string }) {
   return <div className="overflow-hidden rounded-xl border bg-neutral-950 text-neutral-200"><div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-neutral-400"><span className={cn("size-1.5 rounded-full", connected ? "animate-pulse bg-emerald-400" : "bg-neutral-600")} />{connected ? "Streaming live" : lines.length ? "Stream complete" : "Connecting…"}</div><ScrollArea className="h-[360px]"><div className="space-y-1 p-3 font-mono text-[11px] leading-5">{lines.map((line, index) => <div key={`${line.timestamp}-${index}`} className={line.stream === "stderr" ? "text-red-300" : line.stream === "system" ? "text-amber-300" : ""}><span className="mr-2 text-neutral-600">{new Date(line.timestamp).toLocaleTimeString()}</span>{line.message}</div>)}<div ref={endRef} /></div></ScrollArea></div>;
 }
 
-function NodeSheet({ node, open, onOpenChange, domains, deployments }: { node: CanvasNode | null; open: boolean; onOpenChange: (open: boolean) => void; domains: Domain[]; deployments: Deployment[] }) {
-  const app = node?.data.application;
-  const service = node?.data.service;
+function NodeConfigCard({ nodeData, activeTab, onTabChange, onClose, domains, deployments }: { nodeData: CanvasNodeData; activeTab: PanelTab; onTabChange: (tab: PanelTab) => void; onClose: () => void; domains: Domain[]; deployments: Deployment[] }) {
+  const app = nodeData.application;
+  const service = nodeData.service;
   const nodeDomains = app ? domains.filter((domain) => domain.applicationId === app.id) : [];
   const deployment = app ? deployments.find((item) => item.applicationId === app.id) : deployments[0];
-  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent className="w-[calc(100%-1rem)] sm:max-w-[420px]">
-    <SheetHeader className="border-b pr-12"><div className="flex items-center gap-3"><span className="flex size-9 items-center justify-center rounded-lg border"><BrandIcon name={node?.data.brand ?? "other"} officialColor /></span><div><SheetTitle>{node?.data.name}</SheetTitle><SheetDescription className="capitalize">{node?.data.kind} configuration</SheetDescription></div></div></SheetHeader>
-    <Tabs defaultValue="overview" className="min-h-0 flex-1 gap-0"><TabsList variant="line" className="mx-4 max-w-full overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="variables">Variables</TabsTrigger><TabsTrigger value="domains">Domains</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger><TabsTrigger value="settings">Settings</TabsTrigger></TabsList>
+  return <div onClick={(event) => event.stopPropagation()} className="flex h-[520px] w-[400px] flex-col overflow-hidden rounded-2xl border bg-white text-foreground shadow-lg dark:bg-neutral-900">
+    <div className="flex items-center gap-3 border-b p-4 pr-3"><span className="flex size-9 items-center justify-center rounded-lg border"><BrandIcon name={nodeData.brand} officialColor /></span><div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{nodeData.name}</h2><p className="text-xs capitalize text-muted-foreground">{nodeData.kind} configuration</p></div><Button variant="ghost" size="icon-sm" onClick={(event) => { event.stopPropagation(); onClose(); }}><X className="size-4" /><span className="sr-only">Close configuration</span></Button></div>
+    <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as PanelTab)} className="min-h-0 flex-1 gap-0"><TabsList variant="line" className="mx-3 max-w-[calc(100%-1.5rem)] overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="variables">Variables</TabsTrigger><TabsTrigger value="domains">Domains</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger><TabsTrigger value="settings">Settings</TabsTrigger></TabsList>
       <ScrollArea className="min-h-0 flex-1"><div className="p-4">
-        <TabsContent value="overview" className="space-y-5"><div className="flex items-center justify-between rounded-xl border p-4"><span className="text-muted-foreground">Status</span>{node && <StatusBadge status={node.data.status} />}</div><dl className="grid gap-4 rounded-xl border p-4 text-sm">{[[app ? "Framework" : "Service", node?.data.brand], [app ? "Domain" : "Version", app ? nodeDomains.find((domain) => domain.isPrimary)?.hostname ?? "Not configured" : service?.version], ["Install", app?.installCommand ?? "Managed image"], ["Build", app?.buildCommand ?? "Not required"], ["Start", app?.startCommand ?? "Managed by Hefesto"]].map(([label, value]) => <div key={label} className="grid grid-cols-[90px_1fr] gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="truncate font-mono text-xs">{value}</dd></div>)}</dl></TabsContent>
+        <TabsContent value="overview" className="space-y-5"><div className="flex items-center justify-between rounded-xl border p-4"><span className="text-muted-foreground">Status</span><StatusBadge status={nodeData.status} /></div><dl className="grid gap-4 rounded-xl border p-4 text-sm">{[[app ? "Framework" : "Service", nodeData.brand], [app ? "Domain" : "Version", app ? nodeDomains.find((domain) => domain.isPrimary)?.hostname ?? "Not configured" : service?.version], ["Install", app?.installCommand ?? "Managed image"], ["Build", app?.buildCommand ?? "Not required"], ["Start", app?.startCommand ?? "Managed by Hefesto"]].map(([label, value]) => <div key={label} className="grid grid-cols-[90px_1fr] gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="truncate font-mono text-xs">{value}</dd></div>)}</dl></TabsContent>
         <TabsContent value="variables" className="space-y-3">{["DATABASE_URL", "NODE_ENV", "SESSION_SECRET"].map((key) => <div key={key} className="rounded-xl border p-3"><Label className="text-xs">{key}</Label><p className="mt-1 font-mono text-xs text-muted-foreground">••••••••••••••••</p></div>)}</TabsContent>
         <TabsContent value="domains" className="space-y-3">{nodeDomains.length ? nodeDomains.map((domain) => <div key={domain.id} className="flex items-center gap-3 rounded-xl border p-3"><ExternalLink className="size-4 text-muted-foreground" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{domain.hostname}</p><p className="text-xs capitalize text-muted-foreground">SSL {domain.sslStatus}</p></div>{domain.isPrimary && <span className="text-xs text-muted-foreground">Primary</span>}</div>) : <p className="py-10 text-center text-sm text-muted-foreground">No domains configured for this resource.</p>}</TabsContent>
         <TabsContent value="logs"><LiveLogs deploymentId={deployment?.id} /></TabsContent>
         <TabsContent value="settings"><div className="rounded-xl border border-red-200 p-4 dark:border-red-900"><div className="flex gap-3"><AlertTriangle className="size-4 text-red-600" /><div><h3 className="font-medium text-red-700 dark:text-red-400">Danger zone</h3><p className="mt-1 text-xs text-muted-foreground">Permanently remove this resource and its configuration.</p><Button variant="destructive" size="sm" className="mt-4"><Trash2 className="size-3.5" />Delete resource</Button></div></div></div></TabsContent>
       </div></ScrollArea>
     </Tabs>
-  </SheetContent></Sheet>;
+  </div>;
 }
 
 type PaletteItem = { id: string; name: string; version?: string; description?: string; kind: "application" | "service" };
@@ -146,19 +173,56 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   const initialEdges = useMemo<Edge[]>(() => bindings.filter((binding) => applications.some((app) => app.id === binding.applicationId) && services.some((service) => service.id === binding.serviceInstanceId)).map((binding) => ({ id: binding.id, source: binding.applicationId, target: binding.serviceInstanceId, type: "kite", data: { active: activeApplicationIds.includes(binding.applicationId), injectedVarKey: binding.injectedVarKey } })), [activeApplicationIds, applications, bindings, services]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [configNodeId, setConfigNodeId] = useState<string | null>(null);
+  const [configTab, setConfigTab] = useState<PanelTab>("overview");
+  const [configSide, setConfigSide] = useState<Position.Left | Position.Right>(Position.Right);
   const [addOpen, setAddOpen] = useState(false);
   const flowRef = useRef<ReactFlowInstance<CanvasNode, Edge> | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const selectedNode = nodes.find((node) => node.id === configNodeId) ?? null;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === "a" && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); setAddOpen((value) => !value); }
+      if (event.key === "Escape") setConfigNodeId(null);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const onNodeClick: NodeMouseHandler<CanvasNode> = (_, node) => setSelectedNode(node);
+  const openConfig = (nodeId: string, tab: PanelTab = "overview") => {
+    const node = nodes.find((item) => item.id === nodeId);
+    const flow = flowRef.current;
+    const bounds = canvasRef.current?.getBoundingClientRect();
+    if (!node || !flow || !bounds) return;
+    const screen = flow.flowToScreenPosition({ x: node.position.x + 220, y: node.position.y });
+    setConfigSide(screen.x + 430 > bounds.right ? Position.Left : Position.Right);
+    setSelectedNodeId(nodeId);
+    setConfigNodeId(nodeId);
+    setConfigTab(tab);
+  };
+  const closeConfig = () => setConfigNodeId(null);
+  const removeNode = (nodeId: string) => {
+    const node = nodes.find((item) => item.id === nodeId);
+    setNodes((current) => current.filter((item) => item.id !== nodeId));
+    setEdges((current) => current.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
+    setSelectedNodeId(null);
+    setConfigNodeId(null);
+    toast.success(`${node?.data.name ?? "Resource"} removed from the canvas`);
+  };
+  const onNodeClick: NodeMouseHandler<CanvasNode> = (_, node) => {
+    setSelectedNodeId(node.id);
+    setNodes((current) => current.map((item) => ({ ...item, selected: item.id === node.id })));
+    if (configNodeId && configNodeId !== node.id) setConfigNodeId(null);
+  };
+  const actionContext: NodeActionContextValue = {
+    selectedNodeId, configNodeId: selectedNode?.id ?? null, configSide, configTab, domains, deployments,
+    openConfig, closeConfig,
+    deploy: (nodeId) => toast.success(`Deploy queued for ${nodes.find((node) => node.id === nodeId)?.data.name ?? "resource"}`),
+    restart: (nodeId) => toast.success(`Restart queued for ${nodes.find((node) => node.id === nodeId)?.data.name ?? "resource"}`),
+    remove: removeNode,
+  };
   const onConnect = (connection: Connection) => {
     const source = nodes.find((node) => node.id === connection.source);
     const target = nodes.find((node) => node.id === connection.target);
@@ -179,15 +243,14 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   };
 
   return <>
-    <div className="relative h-[min(720px,calc(100vh-240px))] min-h-[560px] overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
-      <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} onInit={(instance) => { flowRef.current = instance; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const raw = event.dataTransfer.getData("application/hefesto-resource"); if (!raw || !flowRef.current) return; try { addResource(JSON.parse(raw) as PaletteItem, flowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch { toast.error("Could not add this resource"); } }} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: .25 }} minZoom={.45} maxZoom={1.6} deleteKeyCode={["Backspace", "Delete"]}>
+    <div ref={canvasRef} className="relative h-[min(720px,calc(100vh-240px))] min-h-[560px] overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
+      <NodeActionContext.Provider value={actionContext}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} onNodeDoubleClick={(_, node) => openConfig(node.id)} onPaneClick={() => { setSelectedNodeId(null); setConfigNodeId(null); setNodes((current) => current.map((node) => ({ ...node, selected: false }))); }} onInit={(instance) => { flowRef.current = instance; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const raw = event.dataTransfer.getData("application/hefesto-resource"); if (!raw || !flowRef.current) return; try { addResource(JSON.parse(raw) as PaletteItem, flowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch { toast.error("Could not add this resource"); } }} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: .25 }} minZoom={.45} maxZoom={1.6} deleteKeyCode={["Backspace", "Delete"]}>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="currentColor" className="text-neutral-300/20 dark:text-neutral-700/20" />
         <Controls showInteractive={false} className="!overflow-hidden !rounded-lg !border-neutral-200 !bg-white !shadow-sm dark:!border-neutral-800 dark:!bg-neutral-900 [&_button]:!border-neutral-200 [&_button]:!bg-white [&_button]:!text-neutral-700 dark:[&_button]:!border-neutral-800 dark:[&_button]:!bg-neutral-900 dark:[&_button]:!text-neutral-300" />
-      </ReactFlow>
+      </ReactFlow></NodeActionContext.Provider>
       <AddPalette open={addOpen} onOpenChange={setAddOpen} onAdd={addResource} />
       <Button className="absolute top-4 right-4 z-10 rounded-full shadow-sm" onClick={() => setAddOpen((value) => !value)}><Plus className="size-4" />Add <kbd className="rounded border border-white/20 px-1 text-[10px]">A</kbd></Button>
       {!nodes.length && <button type="button" onClick={() => setAddOpen(true)} className="absolute top-1/2 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-3 rounded-2xl border border-dashed bg-white/90 px-10 py-8 text-center shadow-sm transition-transform hover:-translate-y-[51%] dark:bg-neutral-900/90"><span className="flex size-10 items-center justify-center rounded-full bg-orange-50 text-orange-600 dark:bg-orange-950"><Plus className="size-5" /></span><span><span className="block font-semibold">Add your first service</span><span className="mt-1 block text-xs text-muted-foreground">Start with an application or managed database.</span></span></button>}
     </div>
-    <NodeSheet node={selectedNode} open={Boolean(selectedNode)} onOpenChange={(open) => !open && setSelectedNode(null)} domains={domains} deployments={deployments} />
   </>;
 }
