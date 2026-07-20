@@ -6,13 +6,15 @@ import {
   useEdgesState, useInternalNode, useNodesState, type Connection, type Edge, type EdgeProps,
   type Node, type NodeMouseHandler, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
-import { AlertTriangle, ExternalLink, FileText, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
+import { Dialog as DialogPrimitive } from "radix-ui";
+import { AlertTriangle, ExternalLink, FileText, Maximize2, Minimize2, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { BrandIcon } from "@/components/brand-icon";
 import { EmptyState } from "@/components/empty-state";
 import { StatusBadge, StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -35,13 +37,8 @@ type CanvasNode = Node<CanvasNodeData, "resource">;
 type PanelTab = "overview" | "variables" | "domains" | "logs" | "settings";
 type NodeActionContextValue = {
   selectedNodeId: string | null;
-  configNodeId: string | null;
-  configSide: Position.Left | Position.Right;
-  configTab: PanelTab;
-  domains: Domain[];
   deployments: Deployment[];
   openConfig: (nodeId: string, tab?: PanelTab) => void;
-  closeConfig: () => void;
   deploy: (nodeId: string) => void;
   restart: (nodeId: string) => void;
   remove: (nodeId: string) => void;
@@ -64,8 +61,8 @@ const glowByStatus: Record<AppStatus, string> = {
   stopped: "",
 };
 
-function ToolbarAction({ label, icon: Icon, onClick, danger = false }: { label: string; icon: typeof Rocket; onClick: () => void; danger?: boolean }) {
-  return <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className={cn("nodrag nopan", danger && "text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950")} onClick={(event) => { event.stopPropagation(); onClick(); }}><Icon className="size-3.5" /><span className="sr-only">{label}</span></Button></TooltipTrigger><TooltipContent side="top" sideOffset={6}>{label}</TooltipContent></Tooltip>;
+function ToolbarAction({ label, icon: Icon, onClick, danger = false, badge }: { label: string; icon: typeof Rocket; onClick: () => void; danger?: boolean; badge?: number }) {
+  return <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className={cn("nodrag nopan relative", danger && "text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950")} onClick={(event) => { event.stopPropagation(); onClick(); }}><Icon className="size-3.5" />{Boolean(badge) && <span className="absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[9px] leading-4 font-semibold text-white">{badge}</span>}<span className="sr-only">{label}</span></Button></TooltipTrigger><TooltipContent side="top" sideOffset={6}>{label}</TooltipContent></Tooltip>;
 }
 
 function PerimeterHandles({ kind }: { kind: CanvasNodeData["kind"] }) {
@@ -73,23 +70,20 @@ function PerimeterHandles({ kind }: { kind: CanvasNodeData["kind"] }) {
   const shared = "!absolute !m-0 !rounded-none !border-0 !bg-transparent !opacity-0 !shadow-none !outline-none hover:!bg-transparent hover:!opacity-0 cursor-crosshair";
   const invisibleStyle: CSSProperties = { opacity: 0, background: "transparent", border: 0, boxShadow: "none", outlineStyle: "none", outlineWidth: 0 };
   return <>
-    <Handle id={`${type}-top`} type={type} position={Position.Top} style={invisibleStyle} className={cn(shared, "!top-0 !left-[10px] !h-[10px] !w-[calc(100%_-_20px)] !translate-x-0 !translate-y-0")} />
-    <Handle id={`${type}-right`} type={type} position={Position.Right} style={invisibleStyle} className={cn(shared, "!top-[10px] !right-0 !h-[calc(100%_-_20px)] !w-[10px] !translate-x-0 !translate-y-0")} />
-    <Handle id={`${type}-bottom`} type={type} position={Position.Bottom} style={invisibleStyle} className={cn(shared, "!bottom-0 !left-[10px] !h-[10px] !w-[calc(100%_-_20px)] !translate-x-0 !translate-y-0")} />
-    <Handle id={`${type}-left`} type={type} position={Position.Left} style={invisibleStyle} className={cn(shared, "!top-[10px] !left-0 !h-[calc(100%_-_20px)] !w-[10px] !translate-x-0 !translate-y-0")} />
+    <Handle id={`${type}-top`} type={type} position={Position.Top} style={{ ...invisibleStyle, top: 0, left: 12, width: "calc(100% - 24px)", height: 12, transform: "none" }} className={shared} />
+    <Handle id={`${type}-right`} type={type} position={Position.Right} style={{ ...invisibleStyle, top: 12, right: 0, width: 12, height: "calc(100% - 24px)", transform: "none" }} className={shared} />
+    <Handle id={`${type}-bottom`} type={type} position={Position.Bottom} style={{ ...invisibleStyle, bottom: 0, left: 12, width: "calc(100% - 24px)", height: 12, transform: "none" }} className={shared} />
+    <Handle id={`${type}-left`} type={type} position={Position.Left} style={{ ...invisibleStyle, top: 12, left: 0, width: 12, height: "calc(100% - 24px)", transform: "none" }} className={shared} />
   </>;
 }
 
 const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProps<CanvasNode>) {
   const actions = useContext(NodeActionContext);
   const pulses = data.status === "running" || data.status === "building";
-  const configVisible = actions?.configNodeId === id;
-  return <div className={cn("w-[220px] rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-transform hover:-translate-y-px dark:border-neutral-800 dark:bg-neutral-900", glowByStatus[data.status], selected && "ring-2 ring-orange-600/30")}>
-    <NodeToolbar isVisible={selected && actions?.selectedNodeId === id} position={Position.Top} offset={8} className="nodrag nopan flex items-center gap-0.5 rounded-full border bg-white p-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-black/40">
-      <TooltipProvider><ToolbarAction label="Deploy" icon={Rocket} onClick={() => actions?.deploy(id)} /><ToolbarAction label="Restart" icon={RefreshCw} onClick={() => actions?.restart(id)} /><ToolbarAction label="Logs" icon={FileText} onClick={() => actions?.openConfig(id, "logs")} /><ToolbarAction label="Settings" icon={Settings} onClick={() => actions?.openConfig(id, "settings")} /><span className="mx-0.5 h-5 w-px bg-border" /><ToolbarAction label="Delete" icon={Trash2} danger onClick={() => actions?.remove(id)} /></TooltipProvider>
-    </NodeToolbar>
-    <NodeToolbar isVisible={configVisible} position={actions?.configSide ?? Position.Right} offset={18} className="nodrag nopan nowheel">
-      {actions && <NodeConfigCard key={id} nodeData={data} activeTab={actions.configTab} onTabChange={(tab) => actions.openConfig(id, tab)} onClose={actions.closeConfig} domains={actions.domains} deployments={actions.deployments} />}
+  const activeDeployments = data.application ? actions?.deployments.filter((deployment) => deployment.applicationId === data.application?.id && ["queued", "building", "deploying"].includes(deployment.status)).length ?? 0 : 0;
+  return <div className={cn("w-[220px] rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-[transform,border-color] hover:-translate-y-px hover:border-dashed hover:border-neutral-400/60 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-500/60", glowByStatus[data.status], selected && "border-dashed border-orange-600 dark:border-orange-600")}>
+    <NodeToolbar isVisible={selected && actions?.selectedNodeId === id} position={Position.Top} offset={8} className="nodrag nopan flex items-center rounded-full border border-neutral-200 bg-white/95 p-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-black/40">
+      <TooltipProvider><span className="flex items-center gap-0.5"><ToolbarAction label="Deploy" icon={Rocket} onClick={() => actions?.deploy(id)} /><ToolbarAction label="Restart" icon={RefreshCw} onClick={() => actions?.restart(id)} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><span className="flex items-center gap-0.5"><ToolbarAction label="Logs" icon={FileText} badge={activeDeployments} onClick={() => actions?.openConfig(id, "logs")} /><ToolbarAction label="Settings" icon={Settings} onClick={() => actions?.openConfig(id, "settings")} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><ToolbarAction label="Delete" icon={Trash2} danger onClick={() => actions?.remove(id)} /></TooltipProvider>
     </NodeToolbar>
     <PerimeterHandles kind={data.kind} />
     <div className="flex items-start gap-3">
@@ -111,9 +105,12 @@ function intersectionPoint(node: NonNullable<ReturnType<typeof useInternalNode>>
   const otherCenterY = otherNode.internals.positionAbsolute.y + otherHeight;
 
   if (!width || !height) return { x: centerX, y: centerY };
+  const deltaX = otherCenterX - centerX;
+  const deltaY = otherCenterY - centerY;
+  if (Math.hypot(deltaX, deltaY) < 1) return { x: centerX, y: centerY + height };
 
-  const xx1 = (otherCenterX - centerX) / (2 * width) - (otherCenterY - centerY) / (2 * height);
-  const yy1 = (otherCenterX - centerX) / (2 * width) + (otherCenterY - centerY) / (2 * height);
+  const xx1 = deltaX / (2 * width) - deltaY / (2 * height);
+  const yy1 = deltaX / (2 * width) + deltaY / (2 * height);
   const scale = 1 / (Math.abs(xx1) + Math.abs(yy1));
   const xx3 = scale * xx1;
   const yy3 = scale * yy1;
@@ -171,15 +168,19 @@ function LiveLogs({ deploymentId }: { deploymentId?: string }) {
   return <div className="overflow-hidden rounded-xl border bg-neutral-950 text-neutral-200"><div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-neutral-400"><span className={cn("size-1.5 rounded-full", connected ? "animate-pulse bg-emerald-400" : "bg-neutral-600")} />{connected ? "Streaming live" : lines.length ? "Stream complete" : "Connecting…"}</div><ScrollArea className="h-[270px]"><div className="space-y-1 p-3 font-mono text-[11px] leading-5">{lines.map((line, index) => <div key={`${line.timestamp}-${index}`} className={line.stream === "stderr" ? "text-red-300" : line.stream === "system" ? "text-amber-300" : ""}><span className="mr-2 text-neutral-600">{new Date(line.timestamp).toLocaleTimeString()}</span>{line.message}</div>)}<div ref={endRef} /></div></ScrollArea></div>;
 }
 
-function NodeConfigCard({ nodeData, activeTab, onTabChange, onClose, domains, deployments }: { nodeData: CanvasNodeData; activeTab: PanelTab; onTabChange: (tab: PanelTab) => void; onClose: () => void; domains: Domain[]; deployments: Deployment[] }) {
+function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, domains, deployments }: { nodeData: CanvasNodeData; activeTab: PanelTab; onTabChange: (tab: PanelTab) => void; onClose: () => void; domains: Domain[]; deployments: Deployment[] }) {
+  const [expanded, setExpanded] = useState(false);
   const app = nodeData.application;
   const service = nodeData.service;
   const nodeDomains = app ? domains.filter((domain) => domain.applicationId === app.id) : [];
   const deployment = app ? deployments.find((item) => item.applicationId === app.id) : deployments[0];
-  return <div onClick={(event) => event.stopPropagation()} className="flex h-auto max-h-[480px] w-[400px] flex-col overflow-hidden rounded-2xl border bg-white text-foreground shadow-lg dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-black/50">
-    <div className="flex items-center gap-3 border-b p-4 pr-3"><span className="flex size-9 items-center justify-center rounded-lg border"><BrandIcon name={nodeData.brand} officialColor /></span><div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{nodeData.name}</h2><p className="text-xs capitalize text-muted-foreground">{nodeData.kind} configuration</p></div><Button variant="ghost" size="icon-sm" onClick={(event) => { event.stopPropagation(); onClose(); }}><X className="size-4" /><span className="sr-only">Close configuration</span></Button></div>
-    <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as PanelTab)} className="min-h-0 gap-0"><div className="shrink-0 border-b px-3"><TabsList variant="line" className="max-w-full overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="variables">Variables</TabsTrigger><TabsTrigger value="domains">Domains</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger><TabsTrigger value="settings">Settings</TabsTrigger></TabsList></div>
-      <div className="max-h-[350px] overflow-y-auto overscroll-contain p-4">
+  return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <DialogPortal>
+      <DialogOverlay style={{ background: "rgba(0, 0, 0, 0.3)", backdropFilter: "none" }} className="duration-[120ms]" />
+      <DialogPrimitive.Content aria-describedby={undefined} style={expanded ? { inset: 16, width: "auto", height: "auto", maxHeight: "none", animation: "none", transform: "none" } : { width: "min(720px, calc(100vw - 2rem))", maxHeight: "80vh", animationDuration: "120ms" }} className={cn("fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-foreground shadow-xl outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-black/50", !expanded && "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2") }>
+        <header className="flex shrink-0 items-center gap-3 border-b p-4 pr-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-neutral-50 dark:bg-neutral-950"><BrandIcon name={nodeData.brand} officialColor className="size-5" /></span><div className="min-w-0 flex-1"><DialogTitle className="truncate text-base font-semibold">{nodeData.name}</DialogTitle><p className="text-xs capitalize text-muted-foreground">{nodeData.kind} configuration</p></div><StatusBadge status={nodeData.status} /><Button variant="ghost" size="icon-sm" onClick={() => setExpanded((value) => !value)}>{expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}<span className="sr-only">{expanded ? "Exit fullscreen" : "Expand dialog"}</span></Button><Button variant="ghost" size="icon-sm" onClick={onClose}><X className="size-4" /><span className="sr-only">Close configuration</span></Button></header>
+        <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as PanelTab)} className="min-h-0 flex-1 gap-0"><div className="shrink-0 border-b px-5"><TabsList variant="line" className="max-w-full overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="variables">Variables</TabsTrigger><TabsTrigger value="domains">Domains</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger><TabsTrigger value="settings">Settings</TabsTrigger></TabsList></div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
         <TabsContent value="overview" className="space-y-5"><div className="flex items-center justify-between rounded-xl border p-4"><span className="text-muted-foreground">Status</span><StatusBadge status={nodeData.status} /></div><dl className="grid gap-4 rounded-xl border p-4 text-sm">{[[app ? "Framework" : "Service", nodeData.brand], [app ? "Domain" : "Version", app ? nodeDomains.find((domain) => domain.isPrimary)?.hostname ?? "Not configured" : service?.version], ["Install", app?.installCommand ?? "Managed image"], ["Build", app?.buildCommand ?? "Not required"], ["Start", app?.startCommand ?? "Managed by Hefesto"]].map(([label, value]) => <div key={label} className="grid grid-cols-[90px_1fr] gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="truncate font-mono text-xs">{value}</dd></div>)}</dl></TabsContent>
         <TabsContent value="variables" className="space-y-3">{["DATABASE_URL", "NODE_ENV", "SESSION_SECRET"].map((key) => <div key={key} className="rounded-xl border p-3"><Label className="text-xs">{key}</Label><p className="mt-1 font-mono text-xs text-muted-foreground">••••••••••••••••</p></div>)}</TabsContent>
         <TabsContent value="domains" className="space-y-3">{nodeDomains.length ? nodeDomains.map((domain) => <div key={domain.id} className="flex items-center gap-3 rounded-xl border p-3"><ExternalLink className="size-4 text-muted-foreground" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{domain.hostname}</p><p className="text-xs capitalize text-muted-foreground">SSL {domain.sslStatus}</p></div>{domain.isPrimary && <span className="text-xs text-muted-foreground">Primary</span>}</div>) : <p className="py-10 text-center text-sm text-muted-foreground">No domains configured for this resource.</p>}</TabsContent>
@@ -187,7 +188,9 @@ function NodeConfigCard({ nodeData, activeTab, onTabChange, onClose, domains, de
         <TabsContent value="settings"><div className="rounded-xl border border-red-200 p-4 dark:border-red-900"><div className="flex gap-3"><AlertTriangle className="size-4 text-red-600" /><div><h3 className="font-medium text-red-700 dark:text-red-400">Danger zone</h3><p className="mt-1 text-xs text-muted-foreground">Permanently remove this resource and its configuration.</p><Button variant="destructive" size="sm" className="mt-4"><Trash2 className="size-3.5" />Delete resource</Button></div></div></div></TabsContent>
       </div>
     </Tabs>
-  </div>;
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  </Dialog>;
 }
 
 type PaletteItem = { id: string; name: string; version?: string; description?: string; kind: "application" | "service" };
@@ -218,10 +221,8 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [configTab, setConfigTab] = useState<PanelTab>("overview");
-  const [configSide, setConfigSide] = useState<Position.Left | Position.Right>(Position.Right);
   const [addOpen, setAddOpen] = useState(false);
   const flowRef = useRef<ReactFlowInstance<CanvasNode, Edge> | null>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
   const selectedNode = nodes.find((node) => node.id === configNodeId) ?? null;
 
   useEffect(() => {
@@ -234,12 +235,7 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   }, []);
 
   const openConfig = (nodeId: string, tab: PanelTab = "overview") => {
-    const node = nodes.find((item) => item.id === nodeId);
-    const flow = flowRef.current;
-    const bounds = canvasRef.current?.getBoundingClientRect();
-    if (!node || !flow || !bounds) return;
-    const screen = flow.flowToScreenPosition({ x: node.position.x + 220, y: node.position.y });
-    setConfigSide(screen.x + 430 > bounds.right ? Position.Left : Position.Right);
+    if (!nodes.some((item) => item.id === nodeId)) return;
     setSelectedNodeId(nodeId);
     setConfigNodeId(nodeId);
     setConfigTab(tab);
@@ -259,8 +255,7 @@ export function ProjectCanvas({ project, applications, services, templates, doma
     openConfig(node.id, "overview");
   };
   const actionContext: NodeActionContextValue = {
-    selectedNodeId, configNodeId: selectedNode?.id ?? null, configSide, configTab, domains, deployments,
-    openConfig, closeConfig,
+    selectedNodeId, deployments, openConfig,
     deploy: (nodeId) => toast.success(`Deploy queued for ${nodes.find((node) => node.id === nodeId)?.data.name ?? "resource"}`),
     restart: (nodeId) => toast.success(`Restart queued for ${nodes.find((node) => node.id === nodeId)?.data.name ?? "resource"}`),
     remove: removeNode,
@@ -286,7 +281,7 @@ export function ProjectCanvas({ project, applications, services, templates, doma
 
   return <>
     <style>{`.hefesto-project-canvas { --canvas-edge: rgba(163, 163, 163, 0.7); } .dark .hefesto-project-canvas { --canvas-edge: rgba(115, 115, 115, 0.7); }`}</style>
-    <div ref={canvasRef} className="hefesto-project-canvas relative h-[min(720px,calc(100vh-240px))] min-h-[560px] overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
+    <div className="hefesto-project-canvas relative h-[min(720px,calc(100vh-240px))] min-h-[560px] overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
       <NodeActionContext.Provider value={actionContext}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} onNodeDoubleClick={(_, node) => openConfig(node.id)} onPaneClick={() => { setSelectedNodeId(null); setConfigNodeId(null); setNodes((current) => current.map((node) => ({ ...node, selected: false }))); }} onInit={(instance) => { flowRef.current = instance; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const raw = event.dataTransfer.getData("application/hefesto-resource"); if (!raw || !flowRef.current) return; try { addResource(JSON.parse(raw) as PaletteItem, flowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch { toast.error("Could not add this resource"); } }} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: .25 }} minZoom={.45} maxZoom={1.6} deleteKeyCode={["Backspace", "Delete"]}>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="currentColor" className="text-neutral-300/20 dark:text-neutral-700/20" />
         <Controls showInteractive={false} className="!overflow-hidden !rounded-lg !border-neutral-200 !bg-white !shadow-sm dark:!border-neutral-800 dark:!bg-neutral-900 [&_button]:!border-neutral-200 [&_button]:!bg-white [&_button]:!text-neutral-700 dark:[&_button]:!border-neutral-800 dark:[&_button]:!bg-neutral-900 dark:[&_button]:!text-neutral-300" />
@@ -295,5 +290,6 @@ export function ProjectCanvas({ project, applications, services, templates, doma
       <Button className="absolute top-4 right-4 z-10 rounded-full shadow-sm" onClick={() => setAddOpen((value) => !value)}><Plus className="size-4" />Add <kbd className="rounded border border-white/20 px-1 text-[10px]">A</kbd></Button>
       {!nodes.length && <EmptyState icon={PackageOpen} title="Add your first service" description="Start with an application or managed database." action={<Button onClick={() => setAddOpen(true)}><Plus className="size-4" />Add resource</Button>} className="absolute top-1/2 left-1/2 z-10 w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-dashed bg-white/90 shadow-sm backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/90" />}
     </div>
+    {selectedNode && <NodeConfigDialog key={selectedNode.id} nodeData={selectedNode.data} activeTab={configTab} onTabChange={(tab) => openConfig(selectedNode.id, tab)} onClose={closeConfig} domains={domains} deployments={deployments} />}
   </>;
 }
