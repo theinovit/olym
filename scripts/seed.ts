@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { getDb, schema } from "../src/db";
 import {
   mockApplications,
+  mockBindings,
   mockDeployments,
   mockDomains,
   mockProjects,
@@ -10,6 +11,7 @@ import {
   mockServiceInstances,
   mockServiceTemplates,
 } from "../src/lib/mock-data";
+import { serviceCatalog } from "../src/server/catalog";
 
 function deterministicUuid(id: string): string {
   const bytes = Buffer.from(createHash("sha256").update(`hefesto:${id}`).digest().subarray(0, 16));
@@ -44,10 +46,12 @@ async function seed() {
       });
     }
 
-    for (const application of mockApplications) {
-      await tx.insert(schema.applications).values({ ...application, id: uuid(application.id), projectId: uuid(application.projectId), createdAt: date(application.createdAt) }).onConflictDoUpdate({
+    for (const [index, application] of mockApplications.entries()) {
+      const canvasX = 80 + (index % 3) * 300;
+      const canvasY = 100 + Math.floor(index / 3) * 220;
+      await tx.insert(schema.applications).values({ ...application, id: uuid(application.id), projectId: uuid(application.projectId), canvasX, canvasY, createdAt: date(application.createdAt) }).onConflictDoUpdate({
         target: schema.applications.id,
-        set: { projectId: uuid(application.projectId), environment: application.environment, name: application.name, framework: application.framework, repoUrl: application.repoUrl, branch: application.branch, buildCommand: application.buildCommand, installCommand: application.installCommand, startCommand: application.startCommand, outputDirectory: application.outputDirectory, port: application.port, status: application.status, createdAt: date(application.createdAt) },
+        set: { projectId: uuid(application.projectId), environment: application.environment, name: application.name, framework: application.framework, repoUrl: application.repoUrl, branch: application.branch, buildCommand: application.buildCommand, installCommand: application.installCommand, startCommand: application.startCommand, outputDirectory: application.outputDirectory, port: application.port, status: application.status, canvasX, canvasY, createdAt: date(application.createdAt) },
       });
     }
 
@@ -58,10 +62,46 @@ async function seed() {
       });
     }
 
-    for (const service of mockServiceInstances) {
-      await tx.insert(schema.serviceInstances).values({ ...service, id: uuid(service.id), projectId: uuid(service.projectId), templateId: uuid(service.templateId), createdAt: date(service.createdAt) }).onConflictDoUpdate({
+    for (const template of serviceCatalog.filter(
+      (catalogTemplate) =>
+        !mockServiceTemplates.some(
+          (mockTemplate) => mockTemplate.name === catalogTemplate.name,
+        ),
+    )) {
+      await tx.insert(schema.serviceTemplates).values({
+        id: uuid(`tpl_${template.id}`),
+        name: template.name,
+        description: template.description,
+        category: template.category,
+        defaultVersion: template.defaultVersion,
+      }).onConflictDoUpdate({
+        target: schema.serviceTemplates.id,
+        set: { name: template.name, description: template.description, category: template.category, defaultVersion: template.defaultVersion },
+      });
+    }
+
+    for (const [index, service] of mockServiceInstances.entries()) {
+      const canvasX = 220 + (index % 2) * 340;
+      const canvasY = 380 + Math.floor(index / 2) * 220;
+      await tx.insert(schema.serviceInstances).values({ ...service, id: uuid(service.id), projectId: uuid(service.projectId), templateId: uuid(service.templateId), canvasX, canvasY, createdAt: date(service.createdAt) }).onConflictDoUpdate({
         target: schema.serviceInstances.id,
-        set: { projectId: uuid(service.projectId), environment: service.environment, templateId: uuid(service.templateId), name: service.name, version: service.version, status: service.status, createdAt: date(service.createdAt) },
+        set: { projectId: uuid(service.projectId), environment: service.environment, templateId: uuid(service.templateId), name: service.name, version: service.version, status: service.status, canvasX, canvasY, createdAt: date(service.createdAt) },
+      });
+    }
+
+    for (const binding of mockBindings) {
+      await tx.insert(schema.bindings).values({
+        id: uuid(binding.id),
+        applicationId: uuid(binding.applicationId),
+        serviceInstanceId: uuid(binding.serviceInstanceId),
+        injectedVarKey: binding.injectedVarKey,
+        createdAt: date(binding.createdAt),
+      }).onConflictDoUpdate({
+        target: [schema.bindings.applicationId, schema.bindings.serviceInstanceId],
+        set: {
+          injectedVarKey: binding.injectedVarKey,
+          createdAt: date(binding.createdAt),
+        },
       });
     }
 

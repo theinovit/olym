@@ -10,6 +10,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -124,6 +125,8 @@ export const applications = pgTable("applications", {
   outputDirectory: text("output_directory"),
   port: integer("port").notNull().default(3000),
   status: appStatusEnum("status").notNull().default("stopped"),
+  canvasX: real("canvas_x"),
+  canvasY: real("canvas_y"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -151,10 +154,35 @@ export const serviceInstances = pgTable("service_instances", {
   name: text("name").notNull(),
   version: text("version").notNull(),
   status: appStatusEnum("status").notNull().default("stopped"),
+  canvasX: real("canvas_x"),
+  canvasY: real("canvas_y"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
+
+export const bindings = pgTable(
+  "bindings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    applicationId: uuid("application_id")
+      .notNull()
+      .references(() => applications.id, { onDelete: "cascade" }),
+    serviceInstanceId: uuid("service_instance_id")
+      .notNull()
+      .references(() => serviceInstances.id, { onDelete: "cascade" }),
+    injectedVarKey: text("injected_var_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("bindings_application_service_unique").on(
+      table.applicationId,
+      table.serviceInstanceId,
+    ),
+  ],
+);
 
 export const deployments = pgTable("deployments", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -228,6 +256,7 @@ export const applicationsRelations = relations(
     deployments: many(deployments),
     domains: many(domains),
     envVars: many(envVars),
+    bindings: many(bindings),
   }),
 );
 
@@ -240,7 +269,7 @@ export const serviceTemplatesRelations = relations(
 
 export const serviceInstancesRelations = relations(
   serviceInstances,
-  ({ one }) => ({
+  ({ one, many }) => ({
     project: one(projects, {
       fields: [serviceInstances.projectId],
       references: [projects.id],
@@ -249,8 +278,20 @@ export const serviceInstancesRelations = relations(
       fields: [serviceInstances.templateId],
       references: [serviceTemplates.id],
     }),
+    bindings: many(bindings),
   }),
 );
+
+export const bindingsRelations = relations(bindings, ({ one }) => ({
+  application: one(applications, {
+    fields: [bindings.applicationId],
+    references: [applications.id],
+  }),
+  serviceInstance: one(serviceInstances, {
+    fields: [bindings.serviceInstanceId],
+    references: [serviceInstances.id],
+  }),
+}));
 
 export const deploymentsRelations = relations(deployments, ({ one }) => ({
   application: one(applications, {
