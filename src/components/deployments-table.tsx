@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { GitBranch, Search } from "lucide-react";
+import { GitBranch, Search, SearchX } from "lucide-react";
 
+import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -71,7 +72,7 @@ export function DeploymentsTable() {
                   <TableCell className="pr-5 text-right text-muted-foreground">{timeAgo(deployment.startedAt)}</TableCell>
                 </TableRow>;
               })}
-              {!deployments.length && <TableRow><TableCell colSpan={7} className="h-32 text-center text-muted-foreground">No deployments match your filters.</TableCell></TableRow>}
+              {!deployments.length && <TableRow className="hover:bg-transparent"><TableCell colSpan={7}><EmptyState icon={SearchX} title="No deployments found" description="Try a different search term or status filter." className="py-12" /></TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>

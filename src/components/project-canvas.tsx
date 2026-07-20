@@ -6,10 +6,11 @@ import {
   useEdgesState, useNodesState, type Connection, type Edge, type EdgeProps,
   type Node, type NodeMouseHandler, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
-import { AlertTriangle, ExternalLink, FileText, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileText, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { BrandIcon } from "@/components/brand-icon";
+import { EmptyState } from "@/components/empty-state";
 import { StatusBadge, StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,7 +73,7 @@ const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProp
   const pulses = data.status === "running" || data.status === "building";
   const configVisible = actions?.configNodeId === id;
   return <div className={cn("w-[220px] rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-transform hover:-translate-y-px dark:border-neutral-800 dark:bg-neutral-900", glowByStatus[data.status], selected && "ring-2 ring-orange-600/30")}>
-    <NodeToolbar isVisible={selected && actions?.selectedNodeId === id} position={Position.Top} offset={8} className="nodrag nopan flex items-center gap-0.5 rounded-full border bg-white p-1 shadow-sm dark:bg-neutral-900">
+    <NodeToolbar isVisible={selected && actions?.selectedNodeId === id} position={Position.Top} offset={8} className="nodrag nopan flex items-center gap-0.5 rounded-full border bg-white p-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-black/40">
       <TooltipProvider><ToolbarAction label="Deploy" icon={Rocket} onClick={() => actions?.deploy(id)} /><ToolbarAction label="Restart" icon={RefreshCw} onClick={() => actions?.restart(id)} /><ToolbarAction label="Logs" icon={FileText} onClick={() => actions?.openConfig(id, "logs")} /><ToolbarAction label="Settings" icon={Settings} onClick={() => actions?.openConfig(id, "settings")} /><span className="mx-0.5 h-5 w-px bg-border" /><ToolbarAction label="Delete" icon={Trash2} danger onClick={() => actions?.remove(id)} /></TooltipProvider>
     </NodeToolbar>
     <NodeToolbar isVisible={configVisible} position={actions?.configSide ?? Position.Right} offset={18} className="nodrag nopan nowheel">
@@ -95,7 +96,7 @@ const KiteEdge = memo(function KiteEdge({ id, sourceX, sourceY, targetX, targetY
   const sag = Math.min(80, dist * 0.25);
   const path = `M ${sourceX},${sourceY} C ${sourceX + dx * 0.25},${sourceY + sag} ${sourceX + dx * 0.75},${targetY + sag} ${targetX},${targetY}`;
   const active = Boolean(data?.active);
-  return <path id={id} d={path} markerEnd={markerEnd} className="react-flow__edge-path" style={{ ...style, fill: "none", stroke: active ? "#f54900" : "rgba(163,163,163,.6)", strokeWidth: 1.5, strokeDasharray: active ? "7 6" : undefined }}>{active && <animate attributeName="stroke-dashoffset" from="26" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
+  return <path id={id} d={path} markerEnd={markerEnd} className={cn("react-flow__edge-path", !active && "text-neutral-400/60 dark:text-neutral-500/70")} style={{ ...style, fill: "none", stroke: active ? "#f54900" : "currentColor", strokeWidth: 1.5, strokeDasharray: active ? "7 6" : undefined }}>{active && <animate attributeName="stroke-dashoffset" from="26" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
 });
 
 const nodeTypes = { resource: ResourceNode };
@@ -134,7 +135,7 @@ function NodeConfigCard({ nodeData, activeTab, onTabChange, onClose, domains, de
   const service = nodeData.service;
   const nodeDomains = app ? domains.filter((domain) => domain.applicationId === app.id) : [];
   const deployment = app ? deployments.find((item) => item.applicationId === app.id) : deployments[0];
-  return <div onClick={(event) => event.stopPropagation()} className="flex h-auto max-h-[480px] w-[400px] flex-col overflow-hidden rounded-2xl border bg-white text-foreground shadow-lg dark:bg-neutral-900">
+  return <div onClick={(event) => event.stopPropagation()} className="flex h-auto max-h-[480px] w-[400px] flex-col overflow-hidden rounded-2xl border bg-white text-foreground shadow-lg dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-black/50">
     <div className="flex items-center gap-3 border-b p-4 pr-3"><span className="flex size-9 items-center justify-center rounded-lg border"><BrandIcon name={nodeData.brand} officialColor /></span><div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{nodeData.name}</h2><p className="text-xs capitalize text-muted-foreground">{nodeData.kind} configuration</p></div><Button variant="ghost" size="icon-sm" onClick={(event) => { event.stopPropagation(); onClose(); }}><X className="size-4" /><span className="sr-only">Close configuration</span></Button></div>
     <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as PanelTab)} className="min-h-0 gap-0"><div className="shrink-0 border-b px-3"><TabsList variant="line" className="max-w-full overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="variables">Variables</TabsTrigger><TabsTrigger value="domains">Domains</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger><TabsTrigger value="settings">Settings</TabsTrigger></TabsList></div>
       <div className="max-h-[350px] overflow-y-auto overscroll-contain p-4">
@@ -161,7 +162,7 @@ function AddPalette({ open, onOpenChange, onAdd }: { open: boolean; onOpenChange
   const applicationItems: PaletteItem[] = frameworks.map((item) => ({ ...item, kind: "application" as const, description: "Deploy from a Git repository" })).filter((item) => `${item.name} ${item.description}`.toLowerCase().includes(query));
   const serviceItems: PaletteItem[] = services.map((item) => ({ id: item.id, name: item.name, version: item.defaultVersion, description: item.description, kind: "service" as const })).filter((item) => `${item.name} ${item.description}`.toLowerCase().includes(query));
   const renderItem = (item: PaletteItem) => <button key={`${item.kind}-${item.id}`} draggable type="button" onDragStart={(event) => { event.dataTransfer.setData("application/hefesto-resource", JSON.stringify(item)); event.dataTransfer.effectAllowed = "copy"; }} onClick={() => onAdd(item)} className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-muted"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-white dark:bg-neutral-950"><BrandIcon name={item.id} officialColor className="size-5" /></span><span className="min-w-0"><span className="block truncate text-sm font-medium">{item.name}</span><span className="block truncate text-xs text-muted-foreground">{item.version ?? item.description}</span></span></button>;
-  return <aside className={cn("absolute inset-y-3 left-3 z-20 flex w-[280px] flex-col overflow-hidden rounded-xl border bg-white/95 shadow-sm backdrop-blur-sm transition-all duration-150 dark:bg-neutral-900/95", open ? "translate-x-0 opacity-100" : "pointer-events-none -translate-x-[calc(100%+1rem)] opacity-0")}>
+  return <aside className={cn("absolute inset-y-3 left-3 z-20 flex w-[280px] flex-col overflow-hidden rounded-xl border bg-white/95 text-foreground shadow-sm backdrop-blur-sm transition-all duration-150 dark:border-neutral-700 dark:bg-neutral-900/95 dark:shadow-black/40", open ? "translate-x-0 opacity-100" : "pointer-events-none -translate-x-[calc(100%+1rem)] opacity-0")}>
     <div className="flex items-center gap-2 border-b p-3"><div className="relative flex-1"><Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter resources…" className="h-8 pl-8" /></div><Button variant="ghost" size="icon-sm" onClick={() => onOpenChange(false)}><X className="size-4" /><span className="sr-only">Close palette</span></Button></div>
     <ScrollArea className="min-h-0 flex-1"><div className="space-y-5 p-3"><section><p className="mb-2 px-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Applications</p><div className="space-y-1">{applicationItems.map(renderItem)}</div></section><section><p className="mb-2 px-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Services</p><div className="space-y-1">{serviceItems.map(renderItem)}</div></section>{!applicationItems.length && !serviceItems.length && <p className="py-8 text-center text-sm text-muted-foreground">No resources found.</p>}</div></ScrollArea>
     <p className="border-t px-3 py-2 text-[10px] text-muted-foreground">Click to add · drag to place · A to toggle</p>
@@ -250,7 +251,7 @@ export function ProjectCanvas({ project, applications, services, templates, doma
       </ReactFlow></NodeActionContext.Provider>
       <AddPalette open={addOpen} onOpenChange={setAddOpen} onAdd={addResource} />
       <Button className="absolute top-4 right-4 z-10 rounded-full shadow-sm" onClick={() => setAddOpen((value) => !value)}><Plus className="size-4" />Add <kbd className="rounded border border-white/20 px-1 text-[10px]">A</kbd></Button>
-      {!nodes.length && <button type="button" onClick={() => setAddOpen(true)} className="absolute top-1/2 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-3 rounded-2xl border border-dashed bg-white/90 px-10 py-8 text-center shadow-sm transition-transform hover:-translate-y-[51%] dark:bg-neutral-900/90"><span className="flex size-10 items-center justify-center rounded-full bg-orange-50 text-orange-600 dark:bg-orange-950"><Plus className="size-5" /></span><span><span className="block font-semibold">Add your first service</span><span className="mt-1 block text-xs text-muted-foreground">Start with an application or managed database.</span></span></button>}
+      {!nodes.length && <EmptyState icon={PackageOpen} title="Add your first service" description="Start with an application or managed database." action={<Button onClick={() => setAddOpen(true)}><Plus className="size-4" />Add resource</Button>} className="absolute top-1/2 left-1/2 z-10 w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-dashed bg-white/90 shadow-sm backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/90" />}
     </div>
   </>;
 }
