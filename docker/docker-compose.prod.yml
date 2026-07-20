@@ -1,15 +1,13 @@
 # Olym production stack — draft (F1).
 # Installed by scripts/install.sh into /opt/olym with a generated .env.
-# Builds the application image locally from the repository Dockerfile.
+# Pulls the prebuilt application image published by CI (.github/workflows/docker-publish.yml) —
+# no build tools required on the host.
 
 name: olym
 
 services:
   olym:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    image: olym:local
+    image: ghcr.io/theinovit/olym:${OLYM_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
