@@ -39,6 +39,30 @@ services:
     networks:
       - olym
 
+  olym-worker:
+    image: ghcr.io/theinovit/olym:${OLYM_VERSION:-latest}
+    restart: unless-stopped
+    command: ["node", "worker.cjs"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      socket-proxy:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://olym:${POSTGRES_PASSWORD}@postgres:5432/olym
+      REDIS_URL: redis://redis:6379
+      DOCKER_HOST: tcp://socket-proxy:2375
+      OLYM_DOCKER_NETWORK: olym
+      TRAEFIK_CERTRESOLVER: letsencrypt
+      DEPLOY_READINESS_PATH: ${DEPLOY_READINESS_PATH:-/}
+      DEPLOY_READINESS_TIMEOUT_MS: ${DEPLOY_READINESS_TIMEOUT_MS:-60000}
+      DEPLOY_READINESS_INTERVAL_MS: ${DEPLOY_READINESS_INTERVAL_MS:-1000}
+    networks:
+      - olym
+
   socket-proxy:
     image: tecnativa/docker-socket-proxy:latest
     restart: unless-stopped
