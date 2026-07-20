@@ -77,3 +77,13 @@ O "+ Add" do canvas evolui de Dialog para **painel lateral esquerdo colapsável 
 - **Clicar OU arrastar** o item para dentro do canvas cria o nó (drag-and-drop do item direto na posição desejada; clique adiciona no centro visível).
 - O painel flutua SOBRE o canvas (overlay com borda/sombra sutil), não empurra o grafo.
 - Estética dos controles flutuantes do canvas (zoom, toggle do painel): pills arredondadas discretas, como a toolbar do Maestri — mas na nossa paleta light-first.
+
+### v3.2 — Painel de nó estilo Maestri (substitui o Sheet lateral)
+
+O Sheet de borda de tela morre. Clicar num nó passa a funcionar como no Maestri:
+
+1. **Selecionar um nó** mostra uma **toolbar flutuante em pill** logo acima dele (como a toolbar de seleção do Maestri): ações Deploy, Restart, Logs, Settings, Delete — ícones discretos, tooltip, fundo card com sombra sutil.
+2. **Abrir configuração** (clique na ação ou duplo-clique no nó) abre um **card flutuante ancorado ao lado do nó, DENTRO do canvas** (~400px, rounded-2xl, borda + sombra suave): ele acompanha pan/zoom (renderizado no viewport do React Flow, ex.: NodeToolbar/position absoluta no flow), nunca cobre o nó, flipa de lado se faltar espaço.
+3. Dentro do card: as mesmas tabs Overview | Variables | Domains | Logs (SSE) | Settings — conteúdo idêntico ao que existia no Sheet, só muda o continente.
+4. Fechar: X no card, Esc, ou clicar no vazio do canvas. Um card por vez.
+5. O canvas continua 100% interativo com o card aberto (arrastar outros nós, pan).
