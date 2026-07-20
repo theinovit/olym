@@ -21,7 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Application, AppStatus, Binding, Deployment, DeploymentStatus, Domain, Framework, LogLine, Project, ServiceInstance, ServiceTemplate } from "@/lib/types";
+import type { Application, AppStatus, Binding, Deployment, DeploymentStatus, Domain, EnvironmentName, Framework, LogLine, Project, ServiceInstance, ServiceTemplate } from "@/lib/types";
 
 type CanvasNodeData = {
   kind: "application" | "service";
@@ -256,7 +256,7 @@ function AddPalette({ open, onOpenChange, onAdd }: { open: boolean; onOpenChange
   </aside>;
 }
 
-export function ProjectCanvas({ project, applications, services, templates, domains, deployments, bindings, activeApplicationIds, addOpen, onAddOpenChange }: { project: Project; applications: Application[]; services: ServiceInstance[]; templates: ServiceTemplate[]; domains: Domain[]; deployments: Deployment[]; bindings: Binding[]; activeApplicationIds: string[]; addOpen: boolean; onAddOpenChange: (open: boolean) => void }) {
+export function ProjectCanvas({ project, environment, applications, services, templates, domains, deployments, bindings, activeApplicationIds, addOpen, onAddOpenChange }: { project: Project; environment: EnvironmentName; applications: Application[]; services: ServiceInstance[]; templates: ServiceTemplate[]; domains: Domain[]; deployments: Deployment[]; bindings: Binding[]; activeApplicationIds: string[]; addOpen: boolean; onAddOpenChange: (open: boolean) => void }) {
   const initialNodes = useMemo<CanvasNode[]>(() => [...applications.map((app, index) => ({ id: app.id, type: "resource" as const, position: { x: 80 + index * 300, y: 55 }, data: { kind: "application" as const, name: app.name, status: app.status, detail: domains.find((domain) => domain.applicationId === app.id && domain.isPrimary)?.hostname ?? app.framework, brand: app.framework, application: app } })), ...services.map((service, index) => { const template = templates.find((item) => item.id === service.templateId); return { id: service.id, type: "resource" as const, position: { x: 150 + index * 300, y: 340 }, data: { kind: "service" as const, name: service.name, status: service.status, detail: `${template?.name ?? "Service"} ${service.version}`, brand: template?.id ?? service.templateId, service, template } }; })], [applications, domains, services, templates]);
   const initialEdges = useMemo<Edge[]>(() => bindings.filter((binding) => applications.some((app) => app.id === binding.applicationId) && services.some((service) => service.id === binding.serviceInstanceId)).map((binding) => ({ id: binding.id, source: binding.applicationId, target: binding.serviceInstanceId, type: "kite", data: { active: activeApplicationIds.includes(binding.applicationId), injectedVarKey: binding.injectedVarKey } })), [activeApplicationIds, applications, bindings, services]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -391,9 +391,9 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   const addResource = (item: PaletteItem, position?: { x: number; y: number }) => {
     const { kind } = item;
     const id = `${kind}_${Date.now()}`;
-    const app = kind === "application" ? { id, projectId: project.id, environment: "production" as const, name: `${project.slug}-${item.id}`, framework: item.id as Framework, repoUrl: "", branch: "main", installCommand: "pnpm install", buildCommand: "pnpm build", startCommand: "pnpm start", outputDirectory: null, port: 3000, status: "stopped" as const, createdAt: new Date().toISOString() } : undefined;
+    const app = kind === "application" ? { id, projectId: project.id, environment, name: `${project.slug}-${item.id}`, framework: item.id as Framework, repoUrl: "", branch: "main", installCommand: "pnpm install", buildCommand: "pnpm build", startCommand: "pnpm start", outputDirectory: null, port: 3000, status: "stopped" as const, createdAt: new Date().toISOString() } : undefined;
     const template = kind === "service" ? templates.find((entry) => entry.id === item.id) ?? { id: item.id, name: item.name, description: "Managed service", category: "database" as const, defaultVersion: item.version ?? "latest" } : undefined;
-    const service = kind === "service" ? { id, projectId: project.id, environment: "production" as const, templateId: item.id, name: `${project.slug}-${item.id}`, version: item.version ?? "latest", status: "building" as const, createdAt: new Date().toISOString() } : undefined;
+    const service = kind === "service" ? { id, projectId: project.id, environment, templateId: item.id, name: `${project.slug}-${item.id}`, version: item.version ?? "latest", status: "building" as const, createdAt: new Date().toISOString() } : undefined;
     setNodes((current) => [...current, { id, type: "resource", position: position ?? { x: 180 + (current.length % 3) * 280, y: 150 + Math.floor(current.length / 3) * 230 }, data: { kind, name: app?.name ?? service!.name, status: app?.status ?? service!.status, detail: app ? item.name : `${item.name} ${item.version ?? "latest"}`, brand: item.id, application: app, service, template } }]);
     toast.success(`${item.name} added to the canvas`);
   };
