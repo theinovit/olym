@@ -40,6 +40,17 @@ src/
 - **Deployment** — execução de build+deploy: status, logs, commit, rollback aponta para deployment anterior.
 - **Domain** — domínio/subdomínio → app, SSL automático via Traefik.
 
+## Autenticação (Sprint 15)
+
+Olym v1 é **single-tenant**: uma conta admin por instalação, sem multi-user/RBAC ainda (isso é F3). Modelo:
+
+- **`users`** (Drizzle): `id`, `email` (unique), `passwordHash`, `createdAt`. Hash com `bcryptjs` (puro JS — evita build nativo na imagem Alpine).
+- **Primeiro acesso ("setup")**: `GET /api/auth/status` retorna `{ hasAccount: boolean }`. Se `false`, a UI mostra uma tela "Create your admin account" (email + senha) em vez de login. `POST /api/auth/setup` só cria a conta se ainda existir zero users no banco — depois disso, o endpoint fica permanentemente bloqueado (evita criação de uma segunda conta por essa via).
+- **Login**: `POST /api/auth/login` (email + senha) → valida hash, seta cookie de sessão `HttpOnly; Secure; SameSite=Lax` assinado via HMAC com `OLYM_SECRET` (já existe em `.env.example`, hoje sem uso).
+- **Logout**: `POST /api/auth/logout` limpa o cookie.
+- **Middleware** (`src/middleware.ts`): protege todas as rotas de `(dashboard)` e `/api/*` exceto `/api/auth/*` — sem sessão válida, redireciona para `/login` (ou `/setup` quando `hasAccount:false`).
+- **Conta do usuário**: o avatar flutuante do chrome v4 (canto inferior esquerdo) passa a refletir a sessão real e ganha ação de logout.
+
 ## Fases
 
 - **F1 (agora):** UI completa com dados mock + schema Drizzle + API contracts. Instalador compose.
