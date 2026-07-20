@@ -24,3 +24,25 @@ Referência visual: OpenShip (screenshot em anexo do CEO). Clean, leve, "soft", 
 - Gradientes espalhados, glassmorphism, neon, sombras pesadas.
 - Emoji na UI. Cores saturadas de fundo em áreas grandes.
 - Mudar tokens do tema em `globals.css` sem coordenar com o CEO.
+
+---
+
+## v2 — Project Canvas & identidade visual (direção do CEO, aprovada pelo fundador)
+
+A partir do Sprint 4, o detalhe do projeto evolui para um **canvas estilo Railway**, e o visual ganha identidade própria mantendo a base clean/light.
+
+### Project Canvas
+
+- View padrão do projeto: canvas infinito com **pan (arrastar fundo) e zoom (scroll/pinch)**, fundo **dot-grid** sutil (`radial-gradient` de pontos neutral-300/20 em light, neutral-700/20 em dark).
+- Cada **application** e **service** é um nó: card compacto (~220px) com ícone do tipo, nome, status dot pulsante quando running/building, domínio primário e framework/versão. Nós **arrastáveis** com leve spring na soltura.
+- **Edges = linhas de pipa**: conexões (app→postgres, app→redis, domain→app) desenhadas em SVG como **cubic bezier com barriga para baixo** — a corda fica frouxa, nunca reta. Fórmula: para A(x1,y1)→B(x2,y2), `sag = min(80, dist*0.25)`; controles `C1=(x1+(x2-x1)*0.25, y1+sag)` e `C2=(x1+(x2-x1)*0.75, y2+sag)`. Stroke 1.5px `neutral-400/60`; conexão ativa (deploy em andamento) ganha **dash animado fluindo** na direção do tráfego e cor ember.
+- Tech: `@xyflow/react` (React Flow 12) com custom nodes (cards shadcn) e custom edge (a linha de pipa acima). Controles de zoom discretos no canto inferior; minimap NÃO (ruído).
+- Tabs no topo do projeto: **Canvas** (default) | List (a view atual de cards) | Deployments | Settings.
+
+### Identidade visual v2
+
+- Novo acento de marca: **ember** (laranja-fogo da forja, ~`#f54900`/orange-600) usado com extrema parcimônia: glow suave atrás de nós running, edges ativas, focus rings de momentos-chave. O CTA "+ New Project" migra do gradiente violeta para **gradiente ember→âmbar** (coerência de marca com Hefesto/forja).
+- **Glow de status**: nó running tem halo `shadow-[0_0_24px] shadow-emerald-500/15`; building, âmbar; failed, vermelho — sempre ≤15% de opacidade.
+- **Command palette ⌘K** (shadcn Command em Dialog): navegar para projetos/apps/páginas, ações rápidas (New Project, Deploy). Atalho visível no header.
+- Micro-interações: framer-motion apenas em drag do canvas, hover-lift de 1px em cards clicáveis e fade/slide de entrada de páginas (80ms, sutil).
+- Tudo continua **light-first**, denso em respiro, primary preto. O canvas é onde a personalidade aparece; o resto permanece sóbrio.
