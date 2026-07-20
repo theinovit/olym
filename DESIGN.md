@@ -53,3 +53,16 @@ A partir do Sprint 4, o detalhe do projeto evolui para um **canvas estilo Railwa
 - Fonte: pacote `simple-icons` (SVGs oficiais, MIT): nextdotjs, nuxt, svelte, remix, adonisjs, django, rubyonrails, laravel, symfony, blazor, phoenixframework, postgresql, mysql, mariadb, mongodb, redis, minio, meilisearch, rabbitmq, clickhouse, elasticsearch, qdrant, docker, traefik.
 - Wrapper único `src/components/brand-icon.tsx`: renderiza o path do simple-icons em `currentColor` por padrão (monocromático, discreto) e com a cor oficial da marca (`fill="#{hex}"`) dentro dos tiles do framework grid e nós do canvas — igual à referência OpenShip.
 - Fallback para framework "other"/static: lucide Box/FileCode.
+
+---
+
+## v3 — Canvas-first (decisão do fundador, modelo Railway)
+
+O canvas deixa de ser uma view do projeto e vira **A interface do projeto**. Tudo acontece nele:
+
+1. **Criar projeto** = nome + servidor → cai num **canvas vazio** com empty state "Add your first service" (Railway-style). O formulário longo de /projects/new morre como página; vira o painel de configuração do nó.
+2. **Botão + Add flutuante** no canvas (canto superior direito): adiciona **Application** (picker de framework com logos oficiais) ou **Service** (catálogo one-click vindo de GET /api/service-templates, com logos oficiais). O nó nasce no canvas na hora.
+3. **Clicar num nó** abre um **Sheet lateral direito** (~420px) com tabs: Overview (status, domínio, framework, deploy config), Variables (env vars mascaradas), Domains, Logs (stream SSE), Settings (danger zone). Nada de navegar para outra página — o canvas permanece visível atrás.
+4. **Ligar nós arrastando** (handles do React Flow): app→service cria um **Binding** — visualmente a linha de pipa, semanticamente a injeção de credenciais (ex.: ligar app no postgres injeta DATABASE_URL no app; toast confirma). Desligar remove.
+5. As linhas de pipa são o grafo REAL de dependências, não decoração.
+6. Sidebar global encolhe em favor do canvas: Home, Projects (lista de canvases), Deployments, Infra, Settings continuam, mas o dia-a-dia é dentro do canvas.
