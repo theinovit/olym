@@ -122,3 +122,19 @@ Chega de parecer OpenShip. O produto adota a linguagem espacial do Maestri em TO
 4. **Header global some**: o ⌘K vira pill flutuante no canto superior direito.
 5. Light-first continua; dark ganha o clima do Maestri (fundo neutral-950, superfícies neutral-900, grid sutil).
 6. O canvas do projeto passa a ser **full-bleed** (a página inteira, sem card wrapper) — os controles já flutuam sobre ele.
+
+---
+
+## v5 — Pill de conector + terminal de deploy ember (feedback do fundador com screenshots Maestri)
+
+### Bug crítico — toolbar colidindo com o header
+No resize/zoom padrão (fitView inicial), o `NodeToolbar` (Position.Top, offset 8, em `project-canvas.tsx`) pode renderizar sobreposto ao título/chrome flutuante da página quando o nó fica perto do topo do viewport. O pill de ações **nunca** pode cobrir o header flutuante. Corrigir reservando uma safe-area no topo (via `fitViewOptions.padding` maior no eixo Y, ou clampando a posição do NodeToolbar para nunca cruzar a faixa onde vive o chrome flutuante do v4).
+
+### Pill de ações — ícone de conector com badge
+Referência: pill inferior do Maestri tem, além de edit/monitor/refresh/delete, um **ícone de ramificação (Y/fork)** com um **badge numérico** ao lado mostrando quantos bindings/conexões o nó tem ativos — visualmente comunica "isto está plugado em algo". Adicionar esse ícone+badge ao pill de ações do nó (ao lado ou no lugar do badge genérico de deployments citado no v3.4), contando bindings ativos (app→service) daquele nó.
+
+### Edges — ajuste fino visual
+A lógica de floating perimeter anchors + sag (`KiteEdge` / `intersectionPoint`) já está estruturalmente correta e é a mesma classe de solução do Maestri. O ajuste é de acabamento: garantir que a curva nunca pareça "fragmento solto" quando o nó de destino está parcialmente fora do viewport (dash contínuo e legível desde a borda do nó de origem), revisar espessura/opacidade do stroke para ficar tão legível quanto a referência do Maestri em qualquer zoom.
+
+### Terminal de deploy — estilo mac, ember não roxo
+Novo tratamento visual para saída de build/deploy (tab Logs do painel de nó — `LiveLogs` em `project-canvas.tsx` — e o toast/estado final de deploy): card terminal escuro com chrome de janela macOS (três dots vermelho/amarelo/verde no topo), cada etapa do processo como linha com checkmark verde (`✓ Building application...`, `✓ Pushing image...`, `✓ Provisioning resources...`, `✓ Deploying...`), estado final `✓ Done! 🎉` seguido de link clicável para a URL do app. Acento de cor em **ember/laranja** (`#f54900`), nunca roxo/violeta — consistente com a marca Olym já estabelecida no v2. O stream real de logs (linha a linha, monoespaçado) continua existindo abaixo/dentro desse card; o tratamento de "etapas com checkmark" é a camada de resumo por cima do stream cru quando os eventos batem com estágios conhecidos (clone/build/deploy/running).
