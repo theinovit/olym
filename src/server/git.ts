@@ -65,7 +65,7 @@ export async function validateRepository(
     throw new BadRequestError("INVALID_GIT_TOKEN", "Git token is invalid.");
   }
   const credentialHelper =
-    "credential.helper=!f() { echo username=x-access-token; echo password=$HEFESTO_GIT_TOKEN; }; f";
+    "credential.helper=!f() { echo username=x-access-token; echo password=$OLYM_GIT_TOKEN; }; f";
   const args = effectiveToken
     ? ["-c", credentialHelper, "ls-remote", "--symref", remoteUrl.toString()]
     : ["ls-remote", "--symref", remoteUrl.toString()];
@@ -80,7 +80,7 @@ export async function validateRepository(
         env: {
           ...process.env,
           GIT_TERMINAL_PROMPT: "0",
-          HEFESTO_GIT_TOKEN: effectiveToken ?? "",
+          OLYM_GIT_TOKEN: effectiveToken ?? "",
         },
       },
     );

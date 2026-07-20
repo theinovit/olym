@@ -22,10 +22,10 @@ interface SimulatedDeploymentStore {
 }
 
 const globalStore = globalThis as typeof globalThis & {
-  __hefestoDeployments?: SimulatedDeploymentStore;
+  __olymDeployments?: SimulatedDeploymentStore;
 };
 
-const simulatedStore = (globalStore.__hefestoDeployments ??= {
+const simulatedStore = (globalStore.__olymDeployments ??= {
   deployments: new Map(),
   logs: new Map(),
   listeners: new Map(),

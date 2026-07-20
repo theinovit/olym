@@ -14,7 +14,7 @@ import {
 import { serviceCatalog } from "../src/server/catalog";
 
 function deterministicUuid(id: string): string {
-  const bytes = Buffer.from(createHash("sha256").update(`hefesto:${id}`).digest().subarray(0, 16));
+  const bytes = Buffer.from(createHash("sha256").update(`olym:${id}`).digest().subarray(0, 16));
   bytes[6] = (bytes[6] & 0x0f) | 0x50;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString("hex");
@@ -120,7 +120,7 @@ async function seed() {
     }
   });
 
-  console.info("Hefesto mock data seeded successfully.");
+  console.info("Olym mock data seeded successfully.");
 }
 
 seed().then(

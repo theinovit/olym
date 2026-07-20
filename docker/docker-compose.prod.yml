@@ -1,15 +1,15 @@
-# Hefesto production stack — draft (F1).
-# Installed by scripts/install.sh into /opt/hefesto with a generated .env.
+# Olym production stack — draft (F1).
+# Installed by scripts/install.sh into /opt/olym with a generated .env.
 # Builds the application image locally from the repository Dockerfile.
 
-name: hefesto
+name: olym
 
 services:
-  hefesto:
+  olym:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: hefesto:local
+    image: olym:local
     restart: unless-stopped
     depends_on:
       postgres:
@@ -20,21 +20,21 @@ services:
         condition: service_started
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://hefesto:${POSTGRES_PASSWORD}@postgres:5432/hefesto
+      DATABASE_URL: postgres://olym:${POSTGRES_PASSWORD}@postgres:5432/olym
       REDIS_URL: redis://redis:6379
       DOCKER_HOST: tcp://socket-proxy:2375
-      HEFESTO_HOST: ${HEFESTO_HOST}
-      HEFESTO_SECRET: ${HEFESTO_SECRET}
+      OLYM_HOST: ${OLYM_HOST}
+      OLYM_SECRET: ${OLYM_SECRET}
     volumes:
-      - hefesto-data:/data
+      - olym-data:/data
     labels:
       - traefik.enable=true
-      - traefik.http.routers.hefesto.rule=Host(`${HEFESTO_HOST}`)
-      - traefik.http.routers.hefesto.entrypoints=websecure
-      - traefik.http.routers.hefesto.tls.certresolver=letsencrypt
-      - traefik.http.services.hefesto.loadbalancer.server.port=3000
+      - traefik.http.routers.olym.rule=Host(`${OLYM_HOST}`)
+      - traefik.http.routers.olym.entrypoints=websecure
+      - traefik.http.routers.olym.tls.certresolver=letsencrypt
+      - traefik.http.services.olym.loadbalancer.server.port=3000
     networks:
-      - hefesto
+      - olym
 
   socket-proxy:
     image: tecnativa/docker-socket-proxy:latest
@@ -48,24 +48,24 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
-      - hefesto
+      - olym
 
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: hefesto
+      POSTGRES_USER: olym
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: hefesto
+      POSTGRES_DB: olym
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hefesto -d hefesto"]
+      test: ["CMD-SHELL", "pg_isready -U olym -d olym"]
       interval: 5s
       timeout: 3s
       retries: 10
     networks:
-      - hefesto
+      - olym
 
   redis:
     image: redis:7-alpine
@@ -79,7 +79,7 @@ services:
       timeout: 3s
       retries: 10
     networks:
-      - hefesto
+      - olym
 
   traefik:
     image: traefik:v3.3
@@ -104,14 +104,14 @@ services:
     volumes:
       - traefik-acme:/acme
     networks:
-      - hefesto
+      - olym
 
 networks:
-  hefesto:
-    name: hefesto
+  olym:
+    name: olym
 
 volumes:
-  hefesto-data:
+  olym-data:
   postgres-data:
   redis-data:
   traefik-acme:

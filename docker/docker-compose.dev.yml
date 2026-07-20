@@ -2,21 +2,21 @@
 # Usage: docker compose -f docker/docker-compose.dev.yml up -d
 # Then run the app on the host: pnpm dev (see .env.example for URLs).
 
-name: hefesto-dev
+name: olym-dev
 
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: hefesto
-      POSTGRES_PASSWORD: hefesto
-      POSTGRES_DB: hefesto
+      POSTGRES_USER: olym
+      POSTGRES_PASSWORD: olym
+      POSTGRES_DB: olym
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hefesto -d hefesto"]
+      test: ["CMD-SHELL", "pg_isready -U olym -d olym"]
       interval: 5s
       timeout: 3s
       retries: 10
