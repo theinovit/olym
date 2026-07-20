@@ -17,6 +17,10 @@ export interface BuildResult {
   commitSha: string;
 }
 
+export interface ImageApplication {
+  dockerImage: string;
+}
+
 export interface RuntimeApplication {
   id: string;
   port: number;
@@ -171,6 +175,23 @@ export async function cloneAndBuildApplication(
     // Keeping build contexts after a failed deploy leaks source code and disk.
     await rm(workspace, { recursive: true, force: true });
   }
+}
+
+export async function pullImageForApplication(
+  application: ImageApplication,
+  writeLog: BuildLogWriter,
+): Promise<BuildResult> {
+  const docker = createDockerClient();
+  const imageTag = application.dockerImage.trim();
+  if (!imageTag) throw new Error("Docker image deployment requires an image");
+
+  await writeLog("system", `Pulling Docker image ${redactSecrets(imageTag)}`);
+  const stream = await docker.pull(imageTag);
+  await followBuild(docker, stream, writeLog);
+  const inspection = await docker.getImage(imageTag).inspect();
+  const imageId = inspection.Id.replace(/^sha256:/, "");
+  await writeLog("system", `Docker image ready at ${imageId.slice(0, 12)}`);
+  return { imageTag, commitSha: imageId.slice(0, 40) };
 }
 
 export async function startApplicationContainer(

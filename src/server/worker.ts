@@ -6,6 +6,7 @@ import { getDb, schema } from "../db";
 import {
   cloneAndBuildApplication,
   DeploymentReadinessError,
+  pullImageForApplication,
   startApplicationContainer,
 } from "./deploy-engine";
 import { publishDeploymentEvent } from "./deployment-events";
@@ -37,6 +38,7 @@ async function processDeployment(job: Job<DeploymentJobData>) {
       .select({
         id: schema.applications.id,
         repoUrl: schema.applications.repoUrl,
+        dockerImage: schema.applications.dockerImage,
         branch: schema.applications.branch,
         environment: schema.applications.environment,
         port: schema.applications.port,
@@ -52,15 +54,23 @@ async function processDeployment(job: Job<DeploymentJobData>) {
       .update(schema.deployments)
       .set({ status: "building" })
       .where(eq(schema.deployments.id, job.data.deploymentId));
-    await job.updateProgress({ stage: "clone", percent: 10 });
+    await job.updateProgress({
+      stage: application.dockerImage ? "pull" : "clone",
+      percent: 10,
+    });
 
-    const result = await cloneAndBuildApplication(
-      job.data.deploymentId,
-      application,
-      writeLog,
-    );
+    const result = application.dockerImage
+      ? await pullImageForApplication(
+          { dockerImage: application.dockerImage },
+          writeLog,
+        )
+      : await cloneAndBuildApplication(
+          job.data.deploymentId,
+          application,
+          writeLog,
+        );
     await job.updateProgress({ stage: "build", percent: 75 });
-    await writeLog("system", `Image created: ${result.imageTag}`);
+    await writeLog("system", `Image ready: ${result.imageTag}`);
     await getDb()
       .update(schema.deployments)
       .set({ commitSha: result.commitSha })
