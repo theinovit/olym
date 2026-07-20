@@ -138,3 +138,20 @@ A lógica de floating perimeter anchors + sag (`KiteEdge` / `intersectionPoint`)
 
 ### Terminal de deploy — estilo mac, ember não roxo
 Novo tratamento visual para saída de build/deploy (tab Logs do painel de nó — `LiveLogs` em `project-canvas.tsx` — e o toast/estado final de deploy): card terminal escuro com chrome de janela macOS (três dots vermelho/amarelo/verde no topo), cada etapa do processo como linha com checkmark verde (`✓ Building application...`, `✓ Pushing image...`, `✓ Provisioning resources...`, `✓ Deploying...`), estado final `✓ Done! 🎉` seguido de link clicável para a URL do app. Acento de cor em **ember/laranja** (`#f54900`), nunca roxo/violeta — consistente com a marca Olym já estabelecida no v2. O stream real de logs (linha a linha, monoespaçado) continua existindo abaixo/dentro desse card; o tratamento de "etapas com checkmark" é a camada de resumo por cima do stream cru quando os eventos batem com estágios conhecidos (clone/build/deploy/running).
+
+---
+
+## v6 — Header do projeto, ambientes como dropdown, conector interativo (feedback do fundador com screenshot)
+
+### Bug — título do projeto colide com o Add Palette
+`project-detail.tsx` posiciona `.project-floating-title` em `left: 224px` (fixo) e `.project-floating-environment` em `right: 176px` (fixo), ambos `z-index: 20` — o MESMO z-index do Add Palette (`project-canvas.tsx`, `absolute inset-y-3 left-3 z-20 w-[280px]`). Quando a paleta abre (ocupa até ~292px), o título em `left:224px` fica embaixo/colidindo com ela. Corrigir: o título precisa reagir ao estado aberto/fechado da paleta (hoje vive em componentes diferentes sem estado compartilhado) — subir esse `open` state um nível acima (ou via contexto) e deslocar/esconder o título quando a paleta estiver aberta, em vez de um offset fixo que só funciona por coincidência com a paleta fechada.
+
+### Ambientes — dropdown dinâmico, não abas fixas
+Hoje `environment` nasce como `useState("production")` e a `Tabs` sempre mostra Production/Staging/Development fixos, mesmo em projetos sem nenhum recurso nesses ambientes. Trocar por:
+1. Default do estado inicial passa de `"production"` para `"development"`.
+2. UI vira **dropdown** (não abas) listando só os ambientes que já têm pelo menos 1 app/service criado no projeto — em projeto novo, só "Development" aparece.
+3. Ação "+ Add environment" no dropdown revela os valores do enum ainda não usados (`staging`, `production`) como opção pra trocar pra eles — o enum em si continua fechado nos 3 valores existentes (`src/db/schema.ts` `environmentNameEnum`), não é texto livre.
+4. Bug relacionado pra corrigir junto: `addResource` em `project-canvas.tsx` (linhas ~395/397) cria app/service sempre com `environment: "production"` HARDCODED, ignorando o ambiente selecionado no dropdown — trocar pra usar o `environment` atual do estado.
+
+### Badge de conector — vira seletor interativo
+O ícone de fork+contador (`ConnectionBadge`/`bindingCounts`, `project-canvas.tsx` ~linha 77) hoje só mostra um tooltip estático. Ao clicar: destacar visualmente (pulse/glow, ex. ring ember) todos os nós conectados àquele nó (via `edges` — mesma fonte de dados do `bindingCounts`), o resto do canvas esmaece levemente (opacity reduzida) pra guiar o olho; clicar num dos nós destacados seleciona/foca ele (mesmo comportamento de `onNodeClick`/pill de ações já existente). Esc ou clique no vazio cancela o destaque sem selecionar nada.
