@@ -3,11 +3,11 @@
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Background, BackgroundVariant, Controls, Handle, NodeToolbar, Position, ReactFlow,
-  useEdgesState, useInternalNode, useNodesState, type Connection, type Edge, type EdgeProps,
+  useEdgesState, useInternalNode, useNodesState, useViewport, type Connection, type Edge, type EdgeProps,
   type Node, type NodeMouseHandler, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { AlertTriangle, ExternalLink, FileText, Maximize2, Minimize2, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileText, GitFork, Maximize2, Minimize2, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { BrandIcon } from "@/components/brand-icon";
@@ -37,7 +37,7 @@ type CanvasNode = Node<CanvasNodeData, "resource">;
 type PanelTab = "overview" | "variables" | "domains" | "logs" | "settings";
 type NodeActionContextValue = {
   selectedNodeId: string | null;
-  deployments: Deployment[];
+  bindingCounts: Record<string, number>;
   openConfig: (nodeId: string, tab?: PanelTab) => void;
   deploy: (nodeId: string) => void;
   restart: (nodeId: string) => void;
@@ -73,6 +73,10 @@ function ToolbarAction({ label, icon: Icon, onClick, danger = false, badge }: { 
   return <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className={cn("nodrag nopan relative", danger && "text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950")} onClick={(event) => { event.stopPropagation(); onClick(); }}><Icon className="size-3.5" />{Boolean(badge) && <span className="absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[9px] leading-4 font-semibold text-white">{badge}</span>}<span className="sr-only">{label}</span></Button></TooltipTrigger><TooltipContent side="top" sideOffset={6}>{label}</TooltipContent></Tooltip>;
 }
 
+function BindingIndicator({ count }: { count: number }) {
+  return <Tooltip><TooltipTrigger asChild><span className="nodrag nopan flex h-8 items-center gap-1 rounded-full px-2 text-neutral-600 dark:text-neutral-300"><GitFork className="size-3.5" /><span className={cn("flex min-w-4 items-center justify-center rounded-full px-1 text-[9px] leading-4 font-semibold", count > 0 ? "bg-blue-600 text-white" : "bg-neutral-200 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300")}>{count}</span><span className="sr-only">{count} active bindings</span></span></TooltipTrigger><TooltipContent side="top" sideOffset={6}>{count} active {count === 1 ? "binding" : "bindings"}</TooltipContent></Tooltip>;
+}
+
 function PerimeterHandles({ kind }: { kind: CanvasNodeData["kind"] }) {
   const type = kind === "application" ? "source" : "target";
   const shared = "!absolute !m-0 !rounded-none !border-0 !bg-transparent !opacity-0 !shadow-none !outline-none hover:!bg-transparent hover:!opacity-0 cursor-crosshair";
@@ -87,11 +91,15 @@ function PerimeterHandles({ kind }: { kind: CanvasNodeData["kind"] }) {
 
 const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProps<CanvasNode>) {
   const actions = useContext(NodeActionContext);
+  const internalNode = useInternalNode(id);
+  const viewport = useViewport();
   const pulses = data.status === "running" || data.status === "building";
-  const activeDeployments = data.application ? actions?.deployments.filter((deployment) => deployment.applicationId === data.application?.id && activeDeploymentStatuses.has(deployment.status)).length ?? 0 : 0;
+  const screenTop = viewport.y + (internalNode?.internals.positionAbsolute.y ?? 0) * viewport.zoom;
+  const toolbarPosition = screenTop < 120 ? Position.Bottom : Position.Top;
+  const bindingCount = actions?.bindingCounts[id] ?? 0;
   return <div className={cn("w-[220px] rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-[transform,border-color] hover:-translate-y-px hover:border-dashed hover:border-neutral-400/60 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-500/60", glowByStatus[data.status], selected && "border-dashed border-orange-600 dark:border-orange-600")}>
-    <NodeToolbar isVisible={selected && actions?.selectedNodeId === id} position={Position.Top} offset={8} className="nodrag nopan flex items-center rounded-full border border-neutral-200 bg-white/95 p-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-black/40">
-      <TooltipProvider><span className="flex items-center gap-0.5"><ToolbarAction label="Deploy" icon={Rocket} onClick={() => actions?.deploy(id)} /><ToolbarAction label="Restart" icon={RefreshCw} onClick={() => actions?.restart(id)} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><span className="flex items-center gap-0.5"><ToolbarAction label="Logs" icon={FileText} badge={activeDeployments} onClick={() => actions?.openConfig(id, "logs")} /><ToolbarAction label="Settings" icon={Settings} onClick={() => actions?.openConfig(id, "settings")} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><ToolbarAction label="Delete" icon={Trash2} danger onClick={() => actions?.remove(id)} /></TooltipProvider>
+    <NodeToolbar isVisible={selected && actions?.selectedNodeId === id} position={toolbarPosition} offset={10} className="nodrag nopan flex items-center rounded-full border border-neutral-200 bg-white/95 p-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-black/40">
+      <TooltipProvider><span className="flex items-center gap-0.5"><ToolbarAction label="Deploy" icon={Rocket} onClick={() => actions?.deploy(id)} /><ToolbarAction label="Restart" icon={RefreshCw} onClick={() => actions?.restart(id)} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><BindingIndicator count={bindingCount} /><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><span className="flex items-center gap-0.5"><ToolbarAction label="Logs" icon={FileText} onClick={() => actions?.openConfig(id, "logs")} /><ToolbarAction label="Settings" icon={Settings} onClick={() => actions?.openConfig(id, "settings")} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><ToolbarAction label="Delete" icon={Trash2} danger onClick={() => actions?.remove(id)} /></TooltipProvider>
     </NodeToolbar>
     <PerimeterHandles kind={data.kind} />
     <div className="flex items-start gap-3">
@@ -142,7 +150,7 @@ const KiteEdge = memo(function KiteEdge({ id, source, target, markerEnd, style, 
   const sag = Math.min(120, dist * 0.35);
   const path = `M ${sourceX},${sourceY} C ${sourceX + dx * 0.25},${sourceY + sag} ${sourceX + dx * 0.75},${targetY + sag} ${targetX},${targetY}`;
   const active = Boolean(data?.active);
-  return <path id={id} d={path} markerEnd={markerEnd} className="react-flow__edge-path" style={{ ...style, fill: "none", stroke: active ? "#f54900" : "var(--canvas-edge)", strokeWidth: 1.5, strokeDasharray: "7 7" }}>{active && <animate attributeName="stroke-dashoffset" from="28" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
+  return <path id={id} d={path} markerEnd={markerEnd} className="react-flow__edge-path" vectorEffect="non-scaling-stroke" strokeLinecap="round" style={{ ...style, fill: "none", stroke: active ? "#f54900" : "var(--canvas-edge)", strokeWidth: 1.75, strokeDasharray: "7 7", strokeDashoffset: 0 }}>{active && <animate attributeName="stroke-dashoffset" from="28" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
 });
 
 const nodeTypes = { resource: ResourceNode };
@@ -243,6 +251,11 @@ export function ProjectCanvas({ project, applications, services, templates, doma
     .map((deployment) => `${deployment.id}:${deployment.status}:${deployment.applicationId}`)
     .sort()
     .join("|");
+  const bindingCounts = useMemo(() => edges.reduce<Record<string, number>>((counts, edge) => {
+    counts[edge.source] = (counts[edge.source] ?? 0) + 1;
+    counts[edge.target] = (counts[edge.target] ?? 0) + 1;
+    return counts;
+  }, {}), [edges]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -335,7 +348,7 @@ export function ProjectCanvas({ project, applications, services, templates, doma
     setNodes((current) => current.map((item) => ({ ...item, selected: item.id === node.id })));
   };
   const actionContext: NodeActionContextValue = {
-    selectedNodeId, deployments: allDeployments, openConfig,
+    selectedNodeId, bindingCounts, openConfig,
     deploy: deployApplication,
     restart: (nodeId) => toast.success(`Restart queued for ${nodes.find((node) => node.id === nodeId)?.data.name ?? "resource"}`),
     remove: removeNode,
@@ -360,9 +373,9 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   };
 
   return <>
-    <style>{`.olym-project-canvas { --canvas-edge: rgba(163, 163, 163, 0.7); } .dark .olym-project-canvas { --canvas-edge: rgba(115, 115, 115, 0.7); } .olym-project-canvas aside { left: 96px; } .canvas-add-button { top: 80px; right: 16px; z-index: 10; }`}</style>
+    <style>{`.olym-project-canvas { --canvas-edge: rgba(115, 115, 115, 0.82); } .dark .olym-project-canvas { --canvas-edge: rgba(163, 163, 163, 0.78); } .olym-project-canvas aside { left: 96px; } .canvas-add-button { top: 80px; right: 16px; z-index: 10; }`}</style>
     <div className="olym-project-canvas relative h-svh w-full overflow-hidden bg-neutral-50 dark:bg-neutral-950">
-      <NodeActionContext.Provider value={actionContext}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} onNodeDoubleClick={(_, node) => openConfig(node.id)} onPaneClick={() => { setSelectedNodeId(null); setConfigNodeId(null); setNodes((current) => current.map((node) => ({ ...node, selected: false }))); }} onInit={(instance) => { flowRef.current = instance; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const raw = event.dataTransfer.getData("application/olym-resource"); if (!raw || !flowRef.current) return; try { addResource(JSON.parse(raw) as PaletteItem, flowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch { toast.error("Could not add this resource"); } }} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: .25 }} minZoom={.45} maxZoom={1.6} deleteKeyCode={["Backspace", "Delete"]}>
+      <NodeActionContext.Provider value={actionContext}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} onNodeDoubleClick={(_, node) => openConfig(node.id)} onPaneClick={() => { setSelectedNodeId(null); setConfigNodeId(null); setNodes((current) => current.map((node) => ({ ...node, selected: false }))); }} onInit={(instance) => { flowRef.current = instance; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const raw = event.dataTransfer.getData("application/olym-resource"); if (!raw || !flowRef.current) return; try { addResource(JSON.parse(raw) as PaletteItem, flowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch { toast.error("Could not add this resource"); } }} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: { x: .25, y: .45 } }} minZoom={.45} maxZoom={1.6} deleteKeyCode={["Backspace", "Delete"]}>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="currentColor" className="text-neutral-300/20 dark:text-neutral-700/20" />
         <Controls showInteractive={false} style={{ left: 96, bottom: 16 }} className="!overflow-hidden !rounded-lg !border-neutral-200 !bg-white !shadow-sm dark:!border-neutral-800 dark:!bg-neutral-900 [&_button]:!border-neutral-200 [&_button]:!bg-white [&_button]:!text-neutral-700 dark:[&_button]:!border-neutral-800 dark:[&_button]:!bg-neutral-900 dark:[&_button]:!text-neutral-300" />
       </ReactFlow></NodeActionContext.Provider>
