@@ -7,7 +7,7 @@
 set -euo pipefail
 
 OLYM_DIR="${OLYM_DIR:-/opt/olym}"
-COMPOSE_URL="${COMPOSE_URL:-https://raw.githubusercontent.com/olym-sh/olym/main/docker/docker-compose.prod.yml}"
+COMPOSE_URL="${COMPOSE_URL:-https://raw.githubusercontent.com/theinovit/olym/main/docker/docker-compose.prod.yml}"
 
 log() { printf '\033[1;36m[olym]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[olym]\033[0m %s\n' "$*" >&2; exit 1; }
