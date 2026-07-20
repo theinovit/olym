@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { getDb, schema } from "@/db";
 import {
@@ -12,9 +12,16 @@ import type { Binding } from "@/lib/types";
 
 import { isDatabaseEnabled } from "../env";
 import { ConflictError, NotFoundError } from "../errors";
+import { serviceCatalog } from "../catalog";
+import { decryptCredential } from "../credentials-crypto";
 import { getApplication } from "./applications";
 import { serializeDates } from "./mappers";
 import { getService } from "./services";
+import {
+  serviceConnectionString,
+  serviceContainerName,
+  type ServiceCredentials,
+} from "./service-runtime";
 
 const simulatedBindings: Binding[] = mockBindings.map((binding) => ({
   ...binding,
@@ -124,4 +131,70 @@ export async function deleteBinding(id: string): Promise<boolean> {
   }
   const rows = await getDb().delete(schema.bindings).where(eq(schema.bindings.id, id)).returning({ id: schema.bindings.id });
   return rows.length > 0;
+}
+
+export async function getBindingEnvironment(
+  applicationId: string,
+): Promise<Record<string, string>> {
+  if (!isDatabaseEnabled()) return {};
+
+  const boundServices = await getDb()
+    .select({
+      injectedVarKey: schema.bindings.injectedVarKey,
+      serviceInstanceId: schema.serviceInstances.id,
+      templateName: schema.serviceTemplates.name,
+    })
+    .from(schema.bindings)
+    .innerJoin(
+      schema.serviceInstances,
+      eq(schema.bindings.serviceInstanceId, schema.serviceInstances.id),
+    )
+    .innerJoin(
+      schema.serviceTemplates,
+      eq(schema.serviceInstances.templateId, schema.serviceTemplates.id),
+    )
+    .where(eq(schema.bindings.applicationId, applicationId));
+  if (boundServices.length === 0) return {};
+
+  const credentialRows = await getDb()
+    .select()
+    .from(schema.serviceCredentials)
+    .where(
+      inArray(
+        schema.serviceCredentials.serviceInstanceId,
+        boundServices.map((service) => service.serviceInstanceId),
+      ),
+  );
+  const credentialsByService = new Map<string, ServiceCredentials>();
+  const decryptedRows = await Promise.all(
+    credentialRows.map(async (row) => {
+      return { ...row, value: await decryptCredential(row.value) };
+    }),
+  );
+  for (const row of decryptedRows) {
+    const credentials = credentialsByService.get(row.serviceInstanceId) ?? {};
+    credentials[row.key] = row.value;
+    credentialsByService.set(row.serviceInstanceId, credentials);
+  }
+
+  return Object.fromEntries(
+    boundServices.map((service) => {
+      const template = serviceCatalog.find(
+        (item) => item.name === service.templateName,
+      );
+      if (!template) {
+        throw new Error(
+          `Service runtime not found for template: ${service.templateName}`,
+        );
+      }
+      return [
+        service.injectedVarKey,
+        serviceConnectionString(
+          template,
+          serviceContainerName(service.serviceInstanceId),
+          credentialsByService.get(service.serviceInstanceId) ?? {},
+        ),
+      ];
+    }),
+  );
 }

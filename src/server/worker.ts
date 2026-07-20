@@ -11,6 +11,7 @@ import {
 } from "./deploy-engine";
 import { publishDeploymentEvent } from "./deployment-events";
 import { redactSecrets } from "./redaction";
+import { getBindingEnvironment } from "./services/bindings";
 
 interface DeploymentJobData {
   deploymentId: string;
@@ -82,7 +83,7 @@ async function processDeployment(job: Job<DeploymentJobData>) {
       .where(eq(schema.deployments.id, job.data.deploymentId));
     await job.updateProgress({ stage: "deploy", percent: 85 });
 
-    const [domain, envRows] = await Promise.all([
+    const [domain, envRows, bindingEnvironment] = await Promise.all([
       getDb()
         .select({ hostname: schema.domains.hostname })
         .from(schema.domains)
@@ -98,12 +99,16 @@ async function processDeployment(job: Job<DeploymentJobData>) {
             eq(schema.envVars.environment, application.environment),
           ),
         ),
+      getBindingEnvironment(application.id),
     ]);
     const containerId = await startApplicationContainer(application, {
       deploymentId: job.data.deploymentId,
       imageTag: result.imageTag,
       hostname: domain[0]?.hostname,
-      env: Object.fromEntries(envRows.map(({ key, value }) => [key, value])),
+      env: {
+        ...Object.fromEntries(envRows.map(({ key, value }) => [key, value])),
+        ...bindingEnvironment,
+      },
       healthCheckPath: application.healthCheckPath,
     });
     const finishedAt = new Date();

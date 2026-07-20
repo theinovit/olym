@@ -133,3 +133,44 @@ export function serviceContainerConfig(
       throw new Error(`Unsupported service template: ${template.id}`);
   }
 }
+
+function requiredCredential(
+  credentials: ServiceCredentials,
+  key: string,
+): string {
+  const value = credentials[key];
+  if (!value) throw new Error(`Missing service credential: ${key}`);
+  return encodeURIComponent(value);
+}
+
+export function serviceConnectionString(
+  template: CatalogServiceTemplate,
+  containerName: string,
+  credentials: ServiceCredentials,
+): string {
+  const credential = (key: string) => requiredCredential(credentials, key);
+
+  switch (template.id) {
+    case "postgres":
+      return `postgresql://${credential("user")}:${credential("password")}@${containerName}:5432/${credential("database")}`;
+    case "mysql":
+    case "mariadb":
+      return `mysql://${credential("user")}:${credential("password")}@${containerName}:3306/${credential("database")}`;
+    case "mongodb":
+      return `mongodb://${credential("user")}:${credential("password")}@${containerName}:27017/${credential("database")}?authSource=admin`;
+    case "redis":
+      return `redis://:${credential("password")}@${containerName}:6379`;
+    case "minio":
+      return `s3://${credential("accessKey")}:${credential("secretKey")}@${containerName}:9000`;
+    case "meilisearch":
+      return `http://${credential("masterKey")}@${containerName}:7700`;
+    case "qdrant":
+      return `http://${credential("apiKey")}@${containerName}:6333`;
+    case "rabbitmq":
+      return `amqp://${credential("user")}:${credential("password")}@${containerName}:5672`;
+    case "clickhouse":
+      return `clickhouse://${credential("user")}:${credential("password")}@${containerName}:9000/${credential("database")}`;
+    default:
+      throw new Error(`Unsupported service template: ${template.id}`);
+  }
+}
