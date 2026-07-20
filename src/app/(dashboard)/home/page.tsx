@@ -88,7 +88,8 @@ export default function HomePage() {
     .slice(0, 6);
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-7">
+    <div className="flex min-h-[calc(100svh-136px)] flex-col justify-center">
+      <div className="mx-auto w-full max-w-7xl space-y-7">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
           Welcome back, Rodrigo
@@ -203,6 +204,7 @@ export default function HomePage() {
             </ul>
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   );
