@@ -50,6 +50,8 @@ Olym v1 é **single-tenant**: uma conta admin por instalação, sem multi-user/R
 - **Logout**: `POST /api/auth/logout` limpa o cookie.
 - **Middleware** (`src/middleware.ts`): protege todas as rotas de `(dashboard)` e `/api/*` exceto `/api/auth/*` — sem sessão válida, redireciona para `/login` (ou `/setup` quando `hasAccount:false`).
 - **Conta do usuário**: o avatar flutuante do chrome v4 (canto inferior esquerdo) passa a refletir a sessão real e ganha ação de logout.
+- **Nome da instância**: o setup ganha um campo extra "Instance/Organization name" (estilo site title do WordPress) — persistido numa tabela singleton `instance_settings` (id fixo, `name`, `createdAt`), criada junto com a conta admin no `POST /api/auth/setup`. Settings → General já tem esse campo na UI (hoje mockado, só `toast.success` local) — passa a ler/gravar de verdade via API.
+- **Domínio + portas no installer**: `scripts/install.sh` deve deixar claro que `OLYM_HOST` precisa ser um domínio real (ex. `painel.suaempresa.com`) com um registro DNS A apontando pro IP da VPS — não a instalação em si que resolve isso. Portas **80 e 443** precisam estar acessíveis publicamente na VPS (desafio HTTP-01 do Let's Encrypt via Traefik + tráfego HTTPS); o installer deve: (a) checar se as portas já estão ocupadas por outro processo antes de subir a stack, falhando com mensagem clara em vez de conflito silencioso; (b) detectar `ufw` ativo e, se estiver bloqueando, oferecer abrir 80/443 automaticamente (com confirmação, nunca silencioso); (c) deixar explícito no prompt/output que o usuário precisa configurar o DNS antes de rodar.
 
 ## Fases
 
