@@ -59,7 +59,9 @@ function deploymentNodeStatus(status: DeploymentStatus): AppStatus {
 const frameworks: { id: Framework; name: string }[] = [
   { id: "nextjs", name: "Next.js" }, { id: "nuxt", name: "Nuxt" },
   { id: "sveltekit", name: "SvelteKit" }, { id: "remix", name: "Remix" },
-  { id: "adonisjs", name: "AdonisJS" }, { id: "django", name: "Django" },
+  { id: "adonisjs", name: "AdonisJS" }, { id: "express", name: "Express" },
+  { id: "fastify", name: "Fastify" }, { id: "nestjs", name: "NestJS" },
+  { id: "django", name: "Django" },
   { id: "rails", name: "Rails" }, { id: "laravel", name: "Laravel" },
   { id: "symfony", name: "Symfony" }, { id: "blazor", name: "Blazor" },
   { id: "phoenix", name: "Phoenix" }, { id: "static", name: "Static" },

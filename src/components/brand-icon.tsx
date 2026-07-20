@@ -5,6 +5,9 @@ import { siClickhouse, siMeilisearch, siMinio, siQdrant, type SimpleIcon } from 
 import adonisOriginal from "devicon/icons/adonisjs/adonisjs-original.svg";
 import blazorOriginal from "devicon/icons/blazor/blazor-original.svg";
 import djangoPlain from "devicon/icons/django/django-plain.svg";
+import expressOriginal from "devicon/icons/express/express-original.svg";
+import fastifyOriginal from "devicon/icons/fastify/fastify-original.svg";
+import fastifyPlain from "devicon/icons/fastify/fastify-plain.svg";
 import laravelOriginal from "devicon/icons/laravel/laravel-original.svg";
 import mariadbOriginal from "devicon/icons/mariadb/mariadb-original.svg";
 import mongodbOriginal from "devicon/icons/mongodb/mongodb-original.svg";
@@ -12,6 +15,8 @@ import mongodbPlain from "devicon/icons/mongodb/mongodb-plain.svg";
 import mysqlOriginal from "devicon/icons/mysql/mysql-original.svg";
 import nextOriginal from "devicon/icons/nextjs/nextjs-original.svg";
 import nextPlain from "devicon/icons/nextjs/nextjs-plain.svg";
+import nestOriginal from "devicon/icons/nestjs/nestjs-original.svg";
+import nestLine from "devicon/icons/nestjs/nestjs-line.svg";
 import nuxtOriginal from "devicon/icons/nuxtjs/nuxtjs-original.svg";
 import nuxtPlain from "devicon/icons/nuxtjs/nuxtjs-plain.svg";
 import phoenixOriginal from "devicon/icons/phoenix/phoenix-original.svg";
@@ -32,6 +37,7 @@ type DeviconPair = { original: StaticImageData; plain?: StaticImageData };
 const devicons: Record<string, DeviconPair> = {
   nextjs: { original: nextOriginal, plain: nextPlain }, nuxt: { original: nuxtOriginal, plain: nuxtPlain }, nuxtjs: { original: nuxtOriginal, plain: nuxtPlain },
   sveltekit: { original: svelteOriginal, plain: sveltePlain }, remix: { original: remixOriginal }, adonisjs: { original: adonisOriginal },
+  express: { original: expressOriginal }, fastify: { original: fastifyOriginal, plain: fastifyPlain }, nestjs: { original: nestOriginal, plain: nestLine },
   django: { original: djangoPlain, plain: djangoPlain }, rails: { original: railsPlain, plain: railsPlain }, laravel: { original: laravelOriginal },
   symfony: { original: symfonyOriginal }, blazor: { original: blazorOriginal }, phoenix: { original: phoenixOriginal },
   postgresql: { original: postgresOriginal, plain: postgresPlain }, postgres: { original: postgresOriginal, plain: postgresPlain }, tpl_postgres: { original: postgresOriginal, plain: postgresPlain },
