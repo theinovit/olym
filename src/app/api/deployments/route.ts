@@ -61,14 +61,13 @@ export async function POST(request: Request) {
 
   const deploymentId = randomUUID();
 
-  try {
-    await enqueueDeployment({
-      deploymentId,
-      applicationId: result.data.applicationId,
-    });
-  } catch {
-    // The API remains usable in local/simulated mode when Redis is unavailable.
-  }
+  const mode = await enqueueDeployment({
+    deploymentId,
+    applicationId: result.data.applicationId,
+  });
 
-  return dataResponse({ deploymentId, status: "queued" as const }, { status: 202 });
+  return dataResponse(
+    { deploymentId, status: "queued" as const, mode },
+    { status: 202 },
+  );
 }

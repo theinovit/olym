@@ -11,9 +11,9 @@ export interface DeploymentJobData {
 let connection: IORedis | undefined;
 let deploymentsQueue: Queue<DeploymentJobData> | undefined;
 
-function getRedisConnection(): IORedis {
+function getRedisConnection(redisUrl: string): IORedis {
   connection ??= new IORedis(
-    process.env.REDIS_URL ?? "redis://localhost:6379",
+    redisUrl,
     {
       lazyConnect: true,
       enableOfflineQueue: false,
@@ -30,10 +30,10 @@ function getRedisConnection(): IORedis {
   return connection;
 }
 
-export function getDeploymentsQueue(): Queue<DeploymentJobData> {
+export function getDeploymentsQueue(redisUrl: string): Queue<DeploymentJobData> {
   if (!deploymentsQueue) {
     deploymentsQueue = new Queue<DeploymentJobData>(DEPLOYMENTS_QUEUE_NAME, {
-      connection: getRedisConnection(),
+      connection: getRedisConnection(redisUrl),
     });
     deploymentsQueue.on("error", () => {
       // enqueueDeployment surfaces the failure to its simulated-mode caller.
@@ -45,20 +45,27 @@ export function getDeploymentsQueue(): Queue<DeploymentJobData> {
 
 export async function enqueueDeployment(
   data: DeploymentJobData,
-): Promise<void> {
-  const queue = getDeploymentsQueue();
+): Promise<"redis" | "simulated"> {
+  const redisUrl = process.env.REDIS_URL?.trim();
+  if (!redisUrl) return "simulated";
 
   try {
+    const redis = getRedisConnection(redisUrl);
+    if (redis.status === "wait") await redis.connect();
+    await redis.ping();
+    const queue = getDeploymentsQueue(redisUrl);
     await queue.add("deploy", data, {
       jobId: data.deploymentId,
       removeOnComplete: 100,
       removeOnFail: 100,
     });
+    return "redis";
   } catch (error) {
-    await queue.close().catch(() => undefined);
+    await deploymentsQueue?.close().catch(() => undefined);
     connection?.disconnect();
     deploymentsQueue = undefined;
     connection = undefined;
-    throw error;
+    void error;
+    return "simulated";
   }
 }
