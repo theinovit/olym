@@ -151,6 +151,7 @@ export const applications = pgTable("applications", {
   installCommand: text("install_command"),
   startCommand: text("start_command"),
   outputDirectory: text("output_directory"),
+  healthCheckPath: text("health_check_path"),
   port: integer("port").notNull().default(3000),
   status: appStatusEnum("status").notNull().default("stopped"),
   canvasX: real("canvas_x"),

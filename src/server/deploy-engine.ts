@@ -31,6 +31,7 @@ export interface RuntimeOptions {
   imageTag: string;
   hostname?: string;
   env: Record<string, string>;
+  healthCheckPath?: string | null;
 }
 
 export type BuildLogWriter = (
@@ -59,10 +60,14 @@ function positiveIntegerFromEnv(name: string, fallback: number): number {
 async function waitForContainerReadiness(
   container: Docker.Container,
   port: number,
+  applicationPath?: string | null,
 ): Promise<void> {
   const timeoutMs = positiveIntegerFromEnv("DEPLOY_READINESS_TIMEOUT_MS", 60_000);
   const intervalMs = positiveIntegerFromEnv("DEPLOY_READINESS_INTERVAL_MS", 1_000);
-  const pathName = process.env.DEPLOY_READINESS_PATH?.trim() || "/";
+  const pathName =
+    applicationPath?.trim() ||
+    process.env.DEPLOY_READINESS_PATH?.trim() ||
+    "/";
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
@@ -234,7 +239,11 @@ export async function startApplicationContainer(
   });
   await container.start();
   try {
-    await waitForContainerReadiness(container, application.port);
+    await waitForContainerReadiness(
+      container,
+      application.port,
+      options.healthCheckPath,
+    );
   } catch (error) {
     await container.stop({ t: 5 }).catch(() => undefined);
     await container.remove({ force: true }).catch(() => undefined);

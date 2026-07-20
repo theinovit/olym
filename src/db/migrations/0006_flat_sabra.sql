@@ -1,0 +1,1 @@
+ALTER TABLE "applications" ADD COLUMN "health_check_path" text;

@@ -72,6 +72,7 @@ export interface Application {
   installCommand: string | null;
   startCommand: string | null;
   outputDirectory: string | null;
+  healthCheckPath?: string | null;
   port: number;
   status: AppStatus;
   createdAt: string;

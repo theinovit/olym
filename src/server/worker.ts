@@ -41,6 +41,7 @@ async function processDeployment(job: Job<DeploymentJobData>) {
         dockerImage: schema.applications.dockerImage,
         branch: schema.applications.branch,
         environment: schema.applications.environment,
+        healthCheckPath: schema.applications.healthCheckPath,
         port: schema.applications.port,
       })
       .from(schema.applications)
@@ -103,6 +104,7 @@ async function processDeployment(job: Job<DeploymentJobData>) {
       imageTag: result.imageTag,
       hostname: domain[0]?.hostname,
       env: Object.fromEntries(envRows.map(({ key, value }) => [key, value])),
+      healthCheckPath: application.healthCheckPath,
     });
     const finishedAt = new Date();
     const [deploymentStartedAt] = await getDb()

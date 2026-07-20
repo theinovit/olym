@@ -72,4 +72,22 @@ export async function updateApplicationPosition(
     .returning({ id: schema.applications.id });
   return rows.length > 0;
 }
+
+export async function updateApplicationHealthCheck(
+  id: string,
+  healthCheckPath: string | null,
+): Promise<boolean> {
+  if (!isDatabaseEnabled()) {
+    const application = simulatedApplications.find((item) => item.id === id);
+    if (!application) return false;
+    application.healthCheckPath = healthCheckPath;
+    return true;
+  }
+  const rows = await getDb()
+    .update(schema.applications)
+    .set({ healthCheckPath })
+    .where(eq(schema.applications.id, id))
+    .returning({ id: schema.applications.id });
+  return rows.length > 0;
+}
 import { randomUUID } from "node:crypto";
