@@ -10,7 +10,11 @@ import {
 const encoder = new TextEncoder();
 const delay = (milliseconds: number) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
-const terminalStatuses = new Set<Deployment["status"]>(["running", "failed"]);
+const terminalStatuses = new Set<Deployment["status"]>([
+  "running",
+  "failed",
+  "cancelled",
+]);
 
 const fallbackMessages = [
   "Deployment accepted",

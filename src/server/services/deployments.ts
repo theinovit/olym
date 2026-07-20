@@ -17,6 +17,7 @@ interface SimulatedDeploymentStore {
   deployments: Map<string, Deployment>;
   logs: Map<string, LogLine[]>;
   listeners: Map<string, Set<DeploymentListener>>;
+  timers: Map<string, Set<NodeJS.Timeout>>;
   createdCount: number;
 }
 
@@ -28,8 +29,41 @@ const simulatedStore = (globalStore.__hefestoDeployments ??= {
   deployments: new Map(),
   logs: new Map(),
   listeners: new Map(),
+  timers: new Map(),
   createdCount: 0,
 });
+
+// Stores created before this field was introduced survive Fast Refresh.
+simulatedStore.timers ??= new Map();
+
+const terminalStatuses = new Set<Deployment["status"]>([
+  "running",
+  "failed",
+  "cancelled",
+]);
+
+function clearDeploymentTimers(id: string) {
+  for (const timer of simulatedStore.timers.get(id) ?? []) clearTimeout(timer);
+  simulatedStore.timers.delete(id);
+}
+
+function scheduleDeploymentStep(
+  deployment: Deployment,
+  delay: number,
+  step: () => void,
+) {
+  const timer = setTimeout(() => {
+    const timers = simulatedStore.timers.get(deployment.id);
+    timers?.delete(timer);
+    if (!timers?.size) simulatedStore.timers.delete(deployment.id);
+    if (terminalStatuses.has(deployment.status)) return;
+    step();
+  }, delay);
+  timer.unref();
+  const timers = simulatedStore.timers.get(deployment.id) ?? new Set();
+  timers.add(timer);
+  simulatedStore.timers.set(deployment.id, timers);
+}
 
 function addLog(
   deployment: Deployment,
@@ -50,6 +84,7 @@ function addLog(
 }
 
 function finishDeployment(deployment: Deployment, status: "running" | "failed") {
+  clearDeploymentTimers(deployment.id);
   deployment.status = status;
   deployment.finishedAt = new Date().toISOString();
   deployment.durationSec = Math.max(
@@ -90,22 +125,24 @@ export function createSimulatedDeployment(
   simulatedStore.logs.set(id, []);
   addLog(deployment, "system", "Deployment accepted and queued");
 
-  setTimeout(() => {
+  scheduleDeploymentStep(deployment, 3_000, () => {
     deployment.status = "building";
     addLog(deployment, "stdout", "Building application artifact");
-  }, 3_000).unref();
+  });
 
-  setTimeout(() => {
+  scheduleDeploymentStep(deployment, 8_000, () => {
     if (shouldFail) {
       finishDeployment(deployment, "failed");
       return;
     }
     deployment.status = "deploying";
     addLog(deployment, "stdout", "Build complete; starting deployment");
-  }, 8_000).unref();
+  });
 
   if (!shouldFail) {
-    setTimeout(() => finishDeployment(deployment, "running"), 11_000).unref();
+    scheduleDeploymentStep(deployment, 11_000, () =>
+      finishDeployment(deployment, "running"),
+    );
   }
 
   return deployment;
@@ -178,7 +215,22 @@ export async function triggerDeployment(
 }
 
 export async function cancelDeployment(id: string): Promise<void> {
-  if (!isDatabaseEnabled()) throw new NotImplementedError("deployments.cancelDeployment");
+  if (!isDatabaseEnabled()) {
+    const deployment = simulatedStore.deployments.get(id);
+    if (!deployment || terminalStatuses.has(deployment.status)) return;
+    clearDeploymentTimers(id);
+    deployment.status = "cancelled";
+    deployment.finishedAt = new Date().toISOString();
+    deployment.durationSec = Math.max(
+      0,
+      Math.round(
+        (Date.parse(deployment.finishedAt) - Date.parse(deployment.startedAt)) /
+          1000,
+      ),
+    );
+    addLog(deployment, "system", "Deployment cancelled");
+    return;
+  }
   await getDb().update(schema.deployments).set({
     status: "cancelled",
     finishedAt: new Date(),
@@ -188,3 +240,26 @@ export async function cancelDeployment(id: string): Promise<void> {
 export async function getDeploymentLogs(id: string): Promise<LogLine[]> {
   return [...(simulatedStore.logs.get(id) ?? [])];
 }
+
+type HotModule = NodeModule & {
+  hot?: { dispose(callback: () => void): void };
+};
+
+const hot =
+  typeof module !== "undefined" ? (module as HotModule).hot : undefined;
+hot?.dispose(() => {
+  for (const id of simulatedStore.timers.keys()) clearDeploymentTimers(id);
+  for (const deployment of simulatedStore.deployments.values()) {
+    if (terminalStatuses.has(deployment.status)) continue;
+    deployment.status = "cancelled";
+    deployment.finishedAt = new Date().toISOString();
+    deployment.durationSec = Math.max(
+      0,
+      Math.round(
+        (Date.parse(deployment.finishedAt) - Date.parse(deployment.startedAt)) /
+          1000,
+      ),
+    );
+    addLog(deployment, "system", "Deployment cancelled during server reload");
+  }
+});
