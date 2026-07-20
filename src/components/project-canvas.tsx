@@ -37,7 +37,10 @@ type CanvasNode = Node<CanvasNodeData, "resource">;
 type PanelTab = "overview" | "variables" | "domains" | "logs" | "settings";
 type NodeActionContextValue = {
   selectedNodeId: string | null;
+  connectionFocusNodeId: string | null;
+  connectedNodeIds: ReadonlySet<string>;
   bindingCounts: Record<string, number>;
+  toggleConnectionFocus: (nodeId: string) => void;
   openConfig: (nodeId: string, tab?: PanelTab) => void;
   deploy: (nodeId: string) => void;
   restart: (nodeId: string) => void;
@@ -73,8 +76,8 @@ function ToolbarAction({ label, icon: Icon, onClick, danger = false, badge }: { 
   return <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className={cn("nodrag nopan relative", danger && "text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950")} onClick={(event) => { event.stopPropagation(); onClick(); }}><Icon className="size-3.5" />{Boolean(badge) && <span className="absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[9px] leading-4 font-semibold text-white">{badge}</span>}<span className="sr-only">{label}</span></Button></TooltipTrigger><TooltipContent side="top" sideOffset={6}>{label}</TooltipContent></Tooltip>;
 }
 
-function BindingIndicator({ count }: { count: number }) {
-  return <Tooltip><TooltipTrigger asChild><span className="nodrag nopan flex h-8 items-center gap-1 rounded-full px-2 text-neutral-600 dark:text-neutral-300"><GitFork className="size-3.5" /><span className={cn("flex min-w-4 items-center justify-center rounded-full px-1 text-[9px] leading-4 font-semibold", count > 0 ? "bg-blue-600 text-white" : "bg-neutral-200 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300")}>{count}</span><span className="sr-only">{count} active bindings</span></span></TooltipTrigger><TooltipContent side="top" sideOffset={6}>{count} active {count === 1 ? "binding" : "bindings"}</TooltipContent></Tooltip>;
+function BindingIndicator({ count, active, onClick }: { count: number; active: boolean; onClick: () => void }) {
+  return <Tooltip><TooltipTrigger asChild><button type="button" disabled={!count} aria-pressed={active} className={cn("nodrag nopan flex h-8 items-center gap-1 rounded-full px-2 text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-default dark:text-neutral-300 dark:hover:bg-neutral-800", active && "bg-orange-50 text-[#f54900] dark:bg-orange-950/40 dark:text-orange-400")} onClick={(event) => { event.stopPropagation(); onClick(); }}><GitFork className="size-3.5" /><span className={cn("flex min-w-4 items-center justify-center rounded-full px-1 text-[9px] leading-4 font-semibold", count > 0 ? "bg-blue-600 text-white" : "bg-neutral-200 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300")}>{count}</span><span className="sr-only">{active ? "Stop highlighting" : "Highlight"} {count} active bindings</span></button></TooltipTrigger><TooltipContent side="top" sideOffset={6}>{count ? active ? "Clear connected resources" : `Highlight ${count} connected ${count === 1 ? "resource" : "resources"}` : "No active bindings"}</TooltipContent></Tooltip>;
 }
 
 function PerimeterHandles({ kind }: { kind: CanvasNodeData["kind"] }) {
@@ -97,9 +100,12 @@ const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProp
   const screenTop = viewport.y + (internalNode?.internals.positionAbsolute.y ?? 0) * viewport.zoom;
   const toolbarPosition = screenTop < 120 ? Position.Bottom : Position.Top;
   const bindingCount = actions?.bindingCounts[id] ?? 0;
-  return <div className={cn("w-[220px] rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-[transform,border-color] hover:-translate-y-px hover:border-dashed hover:border-neutral-400/60 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-500/60", glowByStatus[data.status], selected && "border-dashed border-orange-600 dark:border-orange-600")}>
+  const connectionFocusActive = Boolean(actions?.connectionFocusNodeId);
+  const connectionSource = actions?.connectionFocusNodeId === id;
+  const connectionHighlighted = actions?.connectedNodeIds.has(id) ?? false;
+  return <div className={cn("w-[220px] rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-[transform,border-color,opacity,box-shadow,filter] hover:-translate-y-px hover:border-dashed hover:border-neutral-400/60 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-500/60", glowByStatus[data.status], selected && "border-dashed border-orange-600 dark:border-orange-600", connectionFocusActive && !connectionSource && !connectionHighlighted && "opacity-25 grayscale-[.35]", connectionSource && "ring-2 ring-[#f54900]/50", connectionHighlighted && "ring-2 ring-[#f54900]/90 shadow-[0_0_28px_rgba(245,73,0,0.22)]")}>
     <NodeToolbar isVisible={selected && actions?.selectedNodeId === id} position={toolbarPosition} offset={10} className="nodrag nopan flex items-center rounded-full border border-neutral-200 bg-white/95 p-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-black/40">
-      <TooltipProvider><span className="flex items-center gap-0.5"><ToolbarAction label="Deploy" icon={Rocket} onClick={() => actions?.deploy(id)} /><ToolbarAction label="Restart" icon={RefreshCw} onClick={() => actions?.restart(id)} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><BindingIndicator count={bindingCount} /><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><span className="flex items-center gap-0.5"><ToolbarAction label="Logs" icon={FileText} onClick={() => actions?.openConfig(id, "logs")} /><ToolbarAction label="Settings" icon={Settings} onClick={() => actions?.openConfig(id, "settings")} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><ToolbarAction label="Delete" icon={Trash2} danger onClick={() => actions?.remove(id)} /></TooltipProvider>
+      <TooltipProvider><span className="flex items-center gap-0.5"><ToolbarAction label="Deploy" icon={Rocket} onClick={() => actions?.deploy(id)} /><ToolbarAction label="Restart" icon={RefreshCw} onClick={() => actions?.restart(id)} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><BindingIndicator count={bindingCount} active={connectionSource} onClick={() => actions?.toggleConnectionFocus(id)} /><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><span className="flex items-center gap-0.5"><ToolbarAction label="Logs" icon={FileText} onClick={() => actions?.openConfig(id, "logs")} /><ToolbarAction label="Settings" icon={Settings} onClick={() => actions?.openConfig(id, "settings")} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><ToolbarAction label="Delete" icon={Trash2} danger onClick={() => actions?.remove(id)} /></TooltipProvider>
     </NodeToolbar>
     <PerimeterHandles kind={data.kind} />
     <div className="flex items-start gap-3">
@@ -138,6 +144,7 @@ function intersectionPoint(node: NonNullable<ReturnType<typeof useInternalNode>>
 }
 
 const KiteEdge = memo(function KiteEdge({ id, source, target, markerEnd, style, data }: EdgeProps) {
+  const actions = useContext(NodeActionContext);
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
   if (!sourceNode || !targetNode) return null;
@@ -150,7 +157,9 @@ const KiteEdge = memo(function KiteEdge({ id, source, target, markerEnd, style, 
   const sag = Math.min(120, dist * 0.35);
   const path = `M ${sourceX},${sourceY} C ${sourceX + dx * 0.25},${sourceY + sag} ${sourceX + dx * 0.75},${targetY + sag} ${targetX},${targetY}`;
   const active = Boolean(data?.active);
-  return <path id={id} d={path} markerEnd={markerEnd} className="react-flow__edge-path" vectorEffect="non-scaling-stroke" strokeLinecap="round" style={{ ...style, fill: "none", stroke: active ? "#f54900" : "var(--canvas-edge)", strokeWidth: 1.75, strokeDasharray: "7 7", strokeDashoffset: 0 }}>{active && <animate attributeName="stroke-dashoffset" from="28" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
+  const connectionFocus = actions?.connectionFocusNodeId;
+  const connectionHighlighted = connectionFocus === source || connectionFocus === target;
+  return <path id={id} d={path} markerEnd={markerEnd} className="react-flow__edge-path" vectorEffect="non-scaling-stroke" strokeLinecap="round" style={{ ...style, fill: "none", stroke: active || connectionHighlighted ? "#f54900" : "var(--canvas-edge)", strokeWidth: connectionHighlighted ? 2 : 1.75, strokeDasharray: "7 7", strokeDashoffset: 0, opacity: connectionFocus && !connectionHighlighted ? .15 : 1, transition: "opacity 150ms, stroke 150ms" }}>{active && <animate attributeName="stroke-dashoffset" from="28" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
 });
 
 const nodeTypes = { resource: ResourceNode };
@@ -262,6 +271,7 @@ export function ProjectCanvas({ project, environment, applications, services, te
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [connectionFocusNodeId, setConnectionFocusNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [configTab, setConfigTab] = useState<PanelTab>("overview");
   const [runtimeDeployments, setRuntimeDeployments] = useState<Deployment[]>([]);
@@ -282,15 +292,29 @@ export function ProjectCanvas({ project, environment, applications, services, te
     counts[edge.target] = (counts[edge.target] ?? 0) + 1;
     return counts;
   }, {}), [edges]);
+  const connectedNodeIds = useMemo(() => {
+    const connected = new Set<string>();
+    if (!connectionFocusNodeId) return connected;
+    for (const edge of edges) {
+      if (edge.source === connectionFocusNodeId) connected.add(edge.target);
+      if (edge.target === connectionFocusNodeId) connected.add(edge.source);
+    }
+    return connected;
+  }, [connectionFocusNodeId, edges]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === "a" && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) { event.preventDefault(); onAddOpenChange(!addOpen); }
-      if (event.key === "Escape") setConfigNodeId(null);
+      if (event.key === "Escape") {
+        setConfigNodeId(null);
+        setConnectionFocusNodeId(null);
+        setSelectedNodeId(null);
+        setNodes((current) => current.map((node) => ({ ...node, selected: false })));
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [addOpen, onAddOpenChange]);
+  }, [addOpen, onAddOpenChange, setNodes]);
 
   const openConfig = (nodeId: string, tab: PanelTab = "overview") => {
     if (!nodes.some((item) => item.id === nodeId)) return;
@@ -370,11 +394,14 @@ export function ProjectCanvas({ project, environment, applications, services, te
     toast.success(`${node?.data.name ?? "Resource"} removed from the canvas`);
   };
   const onNodeClick: NodeMouseHandler<CanvasNode> = (_, node) => {
+    if (connectionFocusNodeId && !connectedNodeIds.has(node.id)) return;
+    setConnectionFocusNodeId(null);
     setSelectedNodeId(node.id);
     setNodes((current) => current.map((item) => ({ ...item, selected: item.id === node.id })));
   };
   const actionContext: NodeActionContextValue = {
-    selectedNodeId, bindingCounts, openConfig,
+    selectedNodeId, connectionFocusNodeId, connectedNodeIds, bindingCounts, openConfig,
+    toggleConnectionFocus: (nodeId) => setConnectionFocusNodeId((current) => current === nodeId ? null : nodeId),
     deploy: deployApplication,
     restart: (nodeId) => toast.success(`Restart queued for ${nodes.find((node) => node.id === nodeId)?.data.name ?? "resource"}`),
     remove: removeNode,
@@ -401,7 +428,7 @@ export function ProjectCanvas({ project, environment, applications, services, te
   return <>
     <style>{`.olym-project-canvas { --canvas-edge: rgba(115, 115, 115, 0.82); } .dark .olym-project-canvas { --canvas-edge: rgba(163, 163, 163, 0.78); } .olym-project-canvas aside { left: 96px; } .canvas-add-button { top: 80px; right: 16px; z-index: 10; }`}</style>
     <div className="olym-project-canvas relative h-svh w-full overflow-hidden bg-neutral-50 dark:bg-neutral-950">
-      <NodeActionContext.Provider value={actionContext}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} onNodeDoubleClick={(_, node) => openConfig(node.id)} onPaneClick={() => { setSelectedNodeId(null); setConfigNodeId(null); setNodes((current) => current.map((node) => ({ ...node, selected: false }))); }} onInit={(instance) => { flowRef.current = instance; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const raw = event.dataTransfer.getData("application/olym-resource"); if (!raw || !flowRef.current) return; try { addResource(JSON.parse(raw) as PaletteItem, flowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch { toast.error("Could not add this resource"); } }} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: { x: .25, y: .45 } }} minZoom={.45} maxZoom={1.6} deleteKeyCode={["Backspace", "Delete"]}>
+      <NodeActionContext.Provider value={actionContext}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} onNodeDoubleClick={(_, node) => openConfig(node.id)} onPaneClick={() => { setConnectionFocusNodeId(null); setSelectedNodeId(null); setConfigNodeId(null); setNodes((current) => current.map((node) => ({ ...node, selected: false }))); }} onInit={(instance) => { flowRef.current = instance; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const raw = event.dataTransfer.getData("application/olym-resource"); if (!raw || !flowRef.current) return; try { addResource(JSON.parse(raw) as PaletteItem, flowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch { toast.error("Could not add this resource"); } }} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: { x: .25, y: .45 } }} minZoom={.45} maxZoom={1.6} deleteKeyCode={["Backspace", "Delete"]}>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="currentColor" className="text-neutral-300/20 dark:text-neutral-700/20" />
         <Controls showInteractive={false} style={{ left: 96, bottom: 16 }} className="!overflow-hidden !rounded-lg !border-neutral-200 !bg-white !shadow-sm dark:!border-neutral-800 dark:!bg-neutral-900 [&_button]:!border-neutral-200 [&_button]:!bg-white [&_button]:!text-neutral-700 dark:[&_button]:!border-neutral-800 dark:[&_button]:!bg-neutral-900 dark:[&_button]:!text-neutral-300" />
       </ReactFlow></NodeActionContext.Provider>
