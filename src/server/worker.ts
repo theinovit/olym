@@ -1,35 +1,56 @@
 import { Worker, type Job } from "bullmq";
 import IORedis from "ioredis";
 
+import { eq } from "drizzle-orm";
+import { getDb, schema } from "../db";
+import { cloneAndBuildApplication } from "./deploy-engine";
+
 interface DeploymentJobData {
   deploymentId: string;
   applicationId: string;
 }
 
-const stages = [
-  ["clone", "Cloning application repository"],
-  ["install", "Installing application dependencies"],
-  ["build", "Building production artifact"],
-  ["start", "Starting application"],
-] as const;
-
-const delay = (milliseconds: number) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
-
 async function processDeployment(job: Job<DeploymentJobData>) {
   await job.log(`Deployment ${job.data.deploymentId} queued`);
-
-  for (const [index, [stage, message]] of stages.entries()) {
-    await job.updateProgress({ stage, percent: index * 25 });
-    await job.log(`[${stage}] ${message}`);
-    await delay(600);
-    await job.log(`[${stage}] Completed`);
+  const [application] = await getDb()
+    .select({
+      id: schema.applications.id,
+      repoUrl: schema.applications.repoUrl,
+      branch: schema.applications.branch,
+    })
+    .from(schema.applications)
+    .where(eq(schema.applications.id, job.data.applicationId))
+    .limit(1);
+  if (!application) {
+    throw new Error(`Application not found: ${job.data.applicationId}`);
   }
 
-  await job.updateProgress({ stage: "done", percent: 100 });
-  await job.log("Deployment is running");
+  await getDb()
+    .update(schema.deployments)
+    .set({ status: "building" })
+    .where(eq(schema.deployments.id, job.data.deploymentId));
+  await job.updateProgress({ stage: "clone", percent: 10 });
+  await job.log(`[clone] Cloning ${application.repoUrl} (${application.branch})`);
 
-  return { status: "running" as const };
+  try {
+    const result = await cloneAndBuildApplication(
+      job.data.deploymentId,
+      application,
+    );
+    await job.updateProgress({ stage: "build", percent: 75 });
+    await job.log(`[build] Image created: ${result.imageTag}`);
+    await getDb()
+      .update(schema.deployments)
+      .set({ commitSha: result.commitSha })
+      .where(eq(schema.deployments.id, job.data.deploymentId));
+    return { status: "built" as const, ...result };
+  } catch (error) {
+    await getDb()
+      .update(schema.deployments)
+      .set({ status: "failed", finishedAt: new Date() })
+      .where(eq(schema.deployments.id, job.data.deploymentId));
+    throw error;
+  }
 }
 
 // Connection and Worker are created only when the worker entrypoint runs —
