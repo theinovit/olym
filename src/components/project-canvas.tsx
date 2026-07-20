@@ -3,7 +3,7 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background, BackgroundVariant, Controls, Handle, NodeToolbar, Position, ReactFlow,
-  useEdgesState, useNodesState, type Connection, type Edge, type EdgeProps,
+  useEdgesState, useInternalNode, useNodesState, type Connection, type Edge, type EdgeProps,
   type Node, type NodeMouseHandler, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
 import { AlertTriangle, ExternalLink, FileText, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
@@ -68,6 +68,17 @@ function ToolbarAction({ label, icon: Icon, onClick, danger = false }: { label: 
   return <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className={cn("nodrag nopan", danger && "text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950")} onClick={(event) => { event.stopPropagation(); onClick(); }}><Icon className="size-3.5" /><span className="sr-only">{label}</span></Button></TooltipTrigger><TooltipContent side="top" sideOffset={6}>{label}</TooltipContent></Tooltip>;
 }
 
+function PerimeterHandles({ kind }: { kind: CanvasNodeData["kind"] }) {
+  const type = kind === "application" ? "source" : "target";
+  const shared = "!absolute !m-0 !rounded-none !border-0 !bg-transparent !opacity-0 cursor-crosshair";
+  return <>
+    <Handle id={`${type}-top`} type={type} position={Position.Top} className={cn(shared, "!top-0 !left-[10px] !h-[10px] !w-[calc(100%_-_20px)] !translate-x-0 !translate-y-0")} />
+    <Handle id={`${type}-right`} type={type} position={Position.Right} className={cn(shared, "!top-[10px] !right-0 !h-[calc(100%_-_20px)] !w-[10px] !translate-x-0 !translate-y-0")} />
+    <Handle id={`${type}-bottom`} type={type} position={Position.Bottom} className={cn(shared, "!bottom-0 !left-[10px] !h-[10px] !w-[calc(100%_-_20px)] !translate-x-0 !translate-y-0")} />
+    <Handle id={`${type}-left`} type={type} position={Position.Left} className={cn(shared, "!top-[10px] !left-0 !h-[calc(100%_-_20px)] !w-[10px] !translate-x-0 !translate-y-0")} />
+  </>;
+}
+
 const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProps<CanvasNode>) {
   const actions = useContext(NodeActionContext);
   const pulses = data.status === "running" || data.status === "building";
@@ -79,24 +90,53 @@ const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProp
     <NodeToolbar isVisible={configVisible} position={actions?.configSide ?? Position.Right} offset={18} className="nodrag nopan nowheel">
       {actions && <NodeConfigCard key={id} nodeData={data} activeTab={actions.configTab} onTabChange={(tab) => actions.openConfig(id, tab)} onClose={actions.closeConfig} domains={actions.domains} deployments={actions.deployments} />}
     </NodeToolbar>
-    <Handle type="target" position={Position.Top} className="!size-2.5 !border-2 !border-white !bg-neutral-400 dark:!border-neutral-900" />
+    <PerimeterHandles kind={data.kind} />
     <div className="flex items-start gap-3">
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-neutral-50 dark:bg-neutral-950"><BrandIcon name={data.brand} officialColor className="size-4" /></span>
       <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="truncate text-sm font-semibold">{data.name}</p><StatusDot status={data.status} className={cn("size-2", pulses && "animate-pulse")} /></div><p className="mt-1 truncate text-xs text-muted-foreground">{data.detail}</p></div>
     </div>
     <div className="mt-3 flex items-center justify-between gap-2 border-t pt-3"><span className="truncate text-[11px] capitalize text-muted-foreground">{data.brand}</span><StatusBadge status={data.status} /></div>
-    <Handle type="source" position={Position.Bottom} className="!size-2.5 !border-2 !border-white !bg-neutral-400 dark:!border-neutral-900" />
   </div>;
 });
 
-const KiteEdge = memo(function KiteEdge({ id, sourceX, sourceY, targetX, targetY, markerEnd, style, data }: EdgeProps) {
+function intersectionPoint(node: NonNullable<ReturnType<typeof useInternalNode>>, otherNode: NonNullable<ReturnType<typeof useInternalNode>>) {
+  const width = (node.measured.width ?? 0) / 2;
+  const height = (node.measured.height ?? 0) / 2;
+  const otherWidth = (otherNode.measured.width ?? 0) / 2;
+  const otherHeight = (otherNode.measured.height ?? 0) / 2;
+  const centerX = node.internals.positionAbsolute.x + width;
+  const centerY = node.internals.positionAbsolute.y + height;
+  const otherCenterX = otherNode.internals.positionAbsolute.x + otherWidth;
+  const otherCenterY = otherNode.internals.positionAbsolute.y + otherHeight;
+
+  if (!width || !height) return { x: centerX, y: centerY };
+
+  const xx1 = (otherCenterX - centerX) / (2 * width) - (otherCenterY - centerY) / (2 * height);
+  const yy1 = (otherCenterX - centerX) / (2 * width) + (otherCenterY - centerY) / (2 * height);
+  const scale = 1 / (Math.abs(xx1) + Math.abs(yy1));
+  const xx3 = scale * xx1;
+  const yy3 = scale * yy1;
+
+  return {
+    x: width * (xx3 + yy3) + centerX,
+    y: height * (-xx3 + yy3) + centerY,
+  };
+}
+
+const KiteEdge = memo(function KiteEdge({ id, source, target, markerEnd, style, data }: EdgeProps) {
+  const sourceNode = useInternalNode(source);
+  const targetNode = useInternalNode(target);
+  if (!sourceNode || !targetNode) return null;
+
+  const { x: sourceX, y: sourceY } = intersectionPoint(sourceNode, targetNode);
+  const { x: targetX, y: targetY } = intersectionPoint(targetNode, sourceNode);
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  const sag = Math.min(80, dist * 0.25);
+  const sag = Math.min(120, dist * 0.35);
   const path = `M ${sourceX},${sourceY} C ${sourceX + dx * 0.25},${sourceY + sag} ${sourceX + dx * 0.75},${targetY + sag} ${targetX},${targetY}`;
   const active = Boolean(data?.active);
-  return <path id={id} d={path} markerEnd={markerEnd} className={cn("react-flow__edge-path", !active && "text-neutral-400/60 dark:text-neutral-500/70")} style={{ ...style, fill: "none", stroke: active ? "#f54900" : "currentColor", strokeWidth: 1.5, strokeDasharray: active ? "7 6" : undefined }}>{active && <animate attributeName="stroke-dashoffset" from="26" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
+  return <path id={id} d={path} markerEnd={markerEnd} className={cn("react-flow__edge-path", !active && "text-neutral-400/70 dark:text-neutral-500/70")} style={{ ...style, fill: "none", stroke: active ? "#f54900" : "currentColor", strokeWidth: 1.5, strokeDasharray: "7 7" }}>{active && <animate attributeName="stroke-dashoffset" from="28" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
 });
 
 const nodeTypes = { resource: ResourceNode };
