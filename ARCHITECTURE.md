@@ -59,6 +59,15 @@ Olym v1 é **single-tenant**: uma conta admin por instalação, sem multi-user/R
 - **F2:** deploy engine real (git clone → build → run → Traefik), logs SSE, serviços one-click.
 - **F3:** mail server, monitoring, teams/RBAC, multi-server, CLI, MCP server para AI agents.
 
+## Fonte de deploy: Git ou imagem Docker pronta (Sprint 19)
+
+Hoje toda Application exige `repoUrl` (clone → build via Dockerfile do repo). Adicionar um segundo caminho: apontar direto para uma imagem já publicada (Docker Hub, GHCR, qualquer registry), sem clonar nem buildar nada — só `docker pull` + rodar.
+
+- **Schema**: `applications.repoUrl` vira opcional (nullable); novo campo `dockerImage` (text, nullable). Regra: exatamente um dos dois deve estar preenchido (nunca os dois, nunca nenhum) — validar na camada de aplicação (zod) na criação, não precisa de CHECK constraint no banco.
+- **Deploy engine**: quando `dockerImage` está preenchido, o worker pula inteiramente `cloneAndBuildApplication` — nova função equivalente (ex. `pullImageForApplication`) faz só o pull da imagem e retorna o mesmo formato (`{ imageTag, ... }`) que `startApplicationContainer`/o readiness gate/labels do Traefik já consomem hoje. Nenhuma mudança no que vem depois do build (readiness, swap zero-downtime, Traefik) — só a etapa de "como chegar numa imagem" muda.
+- **API**: `POST /api/applications` aceita `{ repoUrl, branch }` OU `{ dockerImage }` — a validação de Git (`src/server/git.ts`) só roda quando `repoUrl` está presente.
+- **FE**: o fluxo de criação de Application (hoje o node nasce com `repoUrl: ""` fixo no Add Palette, depois configurado no painel do nó) precisa de uma escolha explícita **"Deploy from Git repository"** vs **"Deploy from Docker image"** — investigar o ponto certo de integração (Add Palette ao criar, ou tab Overview/Settings do painel do nó, que hoje não expõe edição de repo/branch ainda). Campos condicionais: Git mostra repo+branch; Imagem mostra `imagem:tag`.
+
 ## Regras para o squad
 
 1. Frontend não toca em `src/server` e `src/db`; Backend não toca em `src/app/(dashboard)` e `src/components` (exceto `src/app/api`). Contrato entre os dois: tipos em `src/lib/types.ts`.
