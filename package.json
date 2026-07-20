@@ -5,11 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:worker": "esbuild src/server/worker.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/worker.cjs --external:pg-native --external:cpu-features",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
     "start": "next start",
     "lint": "eslint",
-    "worker": "node --experimental-strip-types src/server/worker.ts"
+    "worker": "node --experimental-strip-types src/server/worker.ts",
+    "worker:production": "node dist/worker.cjs"
   },
   "dependencies": {
     "@xyflow/react": "^12.11.2",
@@ -44,6 +46,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.28.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",

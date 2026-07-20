@@ -193,7 +193,9 @@ export function startWorker() {
 }
 
 const isEntrypoint =
-  process.argv[1]?.endsWith("worker.ts") || process.argv[1]?.endsWith("worker.js");
+  process.argv[1]?.endsWith("worker.ts") ||
+  process.argv[1]?.endsWith("worker.js") ||
+  process.argv[1]?.endsWith("worker.cjs");
 
 if (isEntrypoint) {
   startWorker();
