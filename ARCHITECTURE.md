@@ -1,4 +1,4 @@
-# Hefesto — Arquitetura
+# Olym — Arquitetura
 
 PaaS self-hosted open-source (estilo Coolify/OpenShip): build, deploy, operação e escala de aplicações na sua própria infraestrutura, com instalação simples (um comando / um container).
 
@@ -13,7 +13,7 @@ PaaS self-hosted open-source (estilo Coolify/OpenShip): build, deploy, operaçã
 | Orquestração | Docker Engine API via **dockerode** | Containers por app/serviço. Rootless quando possível. |
 | Proxy | **Traefik** (labels dinâmicos) | SSL automático (Let's Encrypt), zero-downtime, nunca proxy próprio. |
 | Logs em tempo real | SSE (Server-Sent Events) | Simples, funciona atrás de proxy, sem infra extra de WebSocket. |
-| Instalação | `curl -fsSL get.hefesto.sh \| bash` → docker compose (app + postgres + redis + traefik) | Simplicidade de instalação é requisito nº 1 do produto. |
+| Instalação | `curl -fsSL get.olym.sh \| bash` → docker compose (app + postgres + redis + traefik) | Simplicidade de instalação é requisito nº 1 do produto. |
 
 ## Estrutura de pastas
 

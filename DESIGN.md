@@ -1,4 +1,4 @@
-# Hefesto — Design Brief
+# Olym — Design Brief
 
 Referência visual: OpenShip (screenshot em anexo do CEO). Clean, leve, "soft", profissional.
 
@@ -15,9 +15,9 @@ Referência visual: OpenShip (screenshot em anexo do CEO). Clean, leve, "soft", 
 
 ## Layout
 
-- **Sidebar fixa esquerda** (usar componente `sidebar` do shadcn): logo Hefesto no topo + theme toggle; grupos **MAIN** (Home, Projects, Deployments, Inbox), **SETTINGS** (Settings), **INFRASTRUCTURE** (Servers, Monitoring, Domains); CTA "+ New Project"; footer com conta do usuário.
+- **Sidebar fixa esquerda** (usar componente `sidebar` do shadcn): logo Olym no topo + theme toggle; grupos **MAIN** (Home, Projects, Deployments, Inbox), **SETTINGS** (Settings), **INFRASTRUCTURE** (Servers, Monitoring, Domains); CTA "+ New Project"; footer com conta do usuário.
 - **Conteúdo**: header da página com breadcrumb/título à esquerda e ações à direita; grid de cards.
-- **Tela New Project** (espelhar screenshot): seletor de Framework (tabs Frontend/Backend/Fullstack/Static + grid de tiles com logo), card "Deploy Configuration" (install/build/start commands, port, output dir, toggles), coluna direita com repo picker, Build Location (Server/Local), Domain (free subdomain `.hefesto.app` / custom), botão preto **Deploy** full-width e card "Deploy Summary".
+- **Tela New Project** (espelhar screenshot): seletor de Framework (tabs Frontend/Backend/Fullstack/Static + grid de tiles com logo), card "Deploy Configuration" (install/build/start commands, port, output dir, toggles), coluna direita com repo picker, Build Location (Server/Local), Domain (free subdomain `.olym.app` / custom), botão preto **Deploy** full-width e card "Deploy Summary".
 
 ## Anti-padrões (proibido)
 
@@ -41,7 +41,7 @@ A partir do Sprint 4, o detalhe do projeto evolui para um **canvas estilo Railwa
 
 ### Identidade visual v2
 
-- Novo acento de marca: **ember** (laranja-fogo da forja, ~`#f54900`/orange-600) usado com extrema parcimônia: glow suave atrás de nós running, edges ativas, focus rings de momentos-chave. O CTA "+ New Project" migra do gradiente violeta para **gradiente ember→âmbar** (coerência de marca com Hefesto/forja).
+- Novo acento de marca: **ember** (laranja-fogo da forja, ~`#f54900`/orange-600) usado com extrema parcimônia: glow suave atrás de nós running, edges ativas, focus rings de momentos-chave. O CTA "+ New Project" migra do gradiente violeta para **gradiente ember→âmbar** (herdado da era Hefesto/forja; mantido como acento de marca do Olym).
 - **Glow de status**: nó running tem halo `shadow-[0_0_24px] shadow-emerald-500/15`; building, âmbar; failed, vermelho — sempre ≤15% de opacidade.
 - **Command palette ⌘K** (shadcn Command em Dialog): navegar para projetos/apps/páginas, ações rápidas (New Project, Deploy). Atalho visível no header.
 - Micro-interações: framer-motion apenas em drag do canvas, hover-lift de 1px em cards clicáveis e fade/slide de entrada de páginas (80ms, sutil).
