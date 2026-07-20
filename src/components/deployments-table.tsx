@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GitBranch, Search, SearchX } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
@@ -9,11 +9,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { MOCK_NOW, mockApplications, mockDeployments } from "@/lib/mock-data";
-import type { DeploymentStatus } from "@/lib/types";
+import { mockApplications } from "@/lib/mock-data";
+import type { Deployment, DeploymentStatus } from "@/lib/types";
 
 function timeAgo(iso: string) {
-  const minutes = Math.max(0, Math.floor((new Date(MOCK_NOW).getTime() - new Date(iso).getTime()) / 60000));
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
   if (minutes < 60) return `${minutes}m ago`;
   if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
   return `${Math.floor(minutes / 1440)}d ago`;
@@ -28,9 +28,26 @@ function duration(seconds: number | null) {
 export function DeploymentsTable() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<DeploymentStatus | "all">("all");
+  const [allDeployments, setAllDeployments] = useState<Deployment[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/deployments", { cache: "no-store" });
+        const body = await response.json() as { data?: Deployment[] };
+        if (!cancelled && response.ok) setAllDeployments(body.data ?? []);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    const timer = window.setInterval(load, 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, []);
   const appsById = new Map(mockApplications.map((app) => [app.id, app]));
   const normalizedQuery = query.trim().toLowerCase();
-  const deployments = [...mockDeployments]
+  const deployments = [...allDeployments]
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
     .filter((deployment) => {
       const app = appsById.get(deployment.applicationId);
@@ -71,7 +88,7 @@ export function DeploymentsTable() {
                   <TableCell className="pr-5 text-right text-muted-foreground">{timeAgo(deployment.startedAt)}</TableCell>
                 </TableRow>;
               })}
-              {!deployments.length && <TableRow className="hover:bg-transparent"><TableCell colSpan={7}><EmptyState icon={SearchX} title="No deployments found" description="Try a different search term or status filter." className="py-12" /></TableCell></TableRow>}
+              {!deployments.length && <TableRow className="hover:bg-transparent"><TableCell colSpan={7}><EmptyState icon={SearchX} title={loading ? "Loading deployments…" : "No deployments found"} description={loading ? "Fetching the latest deployment activity." : "Try a different search term or status filter."} className="py-12" /></TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>

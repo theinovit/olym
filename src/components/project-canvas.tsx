@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Background, BackgroundVariant, Controls, Handle, NodeToolbar, Position, ReactFlow,
   useEdgesState, useInternalNode, useNodesState, type Connection, type Edge, type EdgeProps,
@@ -21,7 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Application, AppStatus, Binding, Deployment, Domain, Framework, LogLine, Project, ServiceInstance, ServiceTemplate } from "@/lib/types";
+import type { Application, AppStatus, Binding, Deployment, DeploymentStatus, Domain, Framework, LogLine, Project, ServiceInstance, ServiceTemplate } from "@/lib/types";
 
 type CanvasNodeData = {
   kind: "application" | "service";
@@ -44,6 +44,14 @@ type NodeActionContextValue = {
   remove: (nodeId: string) => void;
 };
 const NodeActionContext = createContext<NodeActionContextValue | null>(null);
+const activeDeploymentStatuses = new Set<DeploymentStatus>(["queued", "building", "deploying"]);
+
+function deploymentNodeStatus(status: DeploymentStatus): AppStatus {
+  if (activeDeploymentStatuses.has(status)) return "building";
+  if (status === "running") return "running";
+  if (status === "failed") return "failed";
+  return "stopped";
+}
 
 const frameworks: { id: Framework; name: string }[] = [
   { id: "nextjs", name: "Next.js" }, { id: "nuxt", name: "Nuxt" },
@@ -80,7 +88,7 @@ function PerimeterHandles({ kind }: { kind: CanvasNodeData["kind"] }) {
 const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProps<CanvasNode>) {
   const actions = useContext(NodeActionContext);
   const pulses = data.status === "running" || data.status === "building";
-  const activeDeployments = data.application ? actions?.deployments.filter((deployment) => deployment.applicationId === data.application?.id && ["queued", "building", "deploying"].includes(deployment.status)).length ?? 0 : 0;
+  const activeDeployments = data.application ? actions?.deployments.filter((deployment) => deployment.applicationId === data.application?.id && activeDeploymentStatuses.has(deployment.status)).length ?? 0 : 0;
   return <div className={cn("w-[220px] rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-[transform,border-color] hover:-translate-y-px hover:border-dashed hover:border-neutral-400/60 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-500/60", glowByStatus[data.status], selected && "border-dashed border-orange-600 dark:border-orange-600")}>
     <NodeToolbar isVisible={selected && actions?.selectedNodeId === id} position={Position.Top} offset={8} className="nodrag nopan flex items-center rounded-full border border-neutral-200 bg-white/95 p-1 shadow-sm dark:border-neutral-700 dark:bg-neutral-900/90 dark:shadow-black/40">
       <TooltipProvider><span className="flex items-center gap-0.5"><ToolbarAction label="Deploy" icon={Rocket} onClick={() => actions?.deploy(id)} /><ToolbarAction label="Restart" icon={RefreshCw} onClick={() => actions?.restart(id)} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><span className="flex items-center gap-0.5"><ToolbarAction label="Logs" icon={FileText} badge={activeDeployments} onClick={() => actions?.openConfig(id, "logs")} /><ToolbarAction label="Settings" icon={Settings} onClick={() => actions?.openConfig(id, "settings")} /></span><span className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" /><ToolbarAction label="Delete" icon={Trash2} danger onClick={() => actions?.remove(id)} /></TooltipProvider>
@@ -168,7 +176,7 @@ function LiveLogs({ deploymentId }: { deploymentId?: string }) {
   return <div className="overflow-hidden rounded-xl border bg-neutral-950 text-neutral-200"><div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-neutral-400"><span className={cn("size-1.5 rounded-full", connected ? "animate-pulse bg-emerald-400" : "bg-neutral-600")} />{connected ? "Streaming live" : lines.length ? "Stream complete" : "Connecting…"}</div><ScrollArea className="h-[270px]"><div className="space-y-1 p-3 font-mono text-[11px] leading-5">{lines.map((line, index) => <div key={`${line.timestamp}-${index}`} className={line.stream === "stderr" ? "text-red-300" : line.stream === "system" ? "text-amber-300" : ""}><span className="mr-2 text-neutral-600">{new Date(line.timestamp).toLocaleTimeString()}</span>{line.message}</div>)}<div ref={endRef} /></div></ScrollArea></div>;
 }
 
-function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, domains, deployments }: { nodeData: CanvasNodeData; activeTab: PanelTab; onTabChange: (tab: PanelTab) => void; onClose: () => void; domains: Domain[]; deployments: Deployment[] }) {
+function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, onDeploy, domains, deployments, logDeploymentId }: { nodeData: CanvasNodeData; activeTab: PanelTab; onTabChange: (tab: PanelTab) => void; onClose: () => void; onDeploy: () => void; domains: Domain[]; deployments: Deployment[]; logDeploymentId?: string }) {
   const [expanded, setExpanded] = useState(false);
   const app = nodeData.application;
   const service = nodeData.service;
@@ -178,13 +186,13 @@ function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, domains, 
     <DialogPortal>
       <DialogOverlay style={{ background: "rgba(0, 0, 0, 0.3)", backdropFilter: "none" }} className="duration-[120ms]" />
       <DialogPrimitive.Content aria-describedby={undefined} style={expanded ? { inset: 16, width: "auto", height: "auto", maxHeight: "none", animation: "none", transform: "none" } : { width: "min(720px, calc(100vw - 2rem))", maxHeight: "80vh", animationDuration: "120ms" }} className={cn("fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-foreground shadow-xl outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-black/50", !expanded && "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2") }>
-        <header className="flex shrink-0 items-center gap-3 border-b p-4 pr-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-neutral-50 dark:bg-neutral-950"><BrandIcon name={nodeData.brand} officialColor className="size-5" /></span><div className="min-w-0 flex-1"><DialogTitle className="truncate text-base font-semibold">{nodeData.name}</DialogTitle><p className="text-xs capitalize text-muted-foreground">{nodeData.kind} configuration</p></div><StatusBadge status={nodeData.status} /><Button variant="ghost" size="icon-sm" onClick={() => setExpanded((value) => !value)}>{expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}<span className="sr-only">{expanded ? "Exit fullscreen" : "Expand dialog"}</span></Button><Button variant="ghost" size="icon-sm" onClick={onClose}><X className="size-4" /><span className="sr-only">Close configuration</span></Button></header>
+        <header className="flex shrink-0 items-center gap-3 border-b p-4 pr-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-neutral-50 dark:bg-neutral-950"><BrandIcon name={nodeData.brand} officialColor className="size-5" /></span><div className="min-w-0 flex-1"><DialogTitle className="truncate text-base font-semibold">{nodeData.name}</DialogTitle><p className="text-xs capitalize text-muted-foreground">{nodeData.kind} configuration</p></div><StatusBadge status={nodeData.status} />{app && <Button size="sm" onClick={onDeploy}><Rocket className="size-3.5" />Deploy</Button>}<Button variant="ghost" size="icon-sm" onClick={() => setExpanded((value) => !value)}>{expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}<span className="sr-only">{expanded ? "Exit fullscreen" : "Expand dialog"}</span></Button><Button variant="ghost" size="icon-sm" onClick={onClose}><X className="size-4" /><span className="sr-only">Close configuration</span></Button></header>
         <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as PanelTab)} className="min-h-0 flex-1 gap-0"><div className="shrink-0 border-b px-5"><TabsList variant="line" className="max-w-full overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="variables">Variables</TabsTrigger><TabsTrigger value="domains">Domains</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger><TabsTrigger value="settings">Settings</TabsTrigger></TabsList></div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
         <TabsContent value="overview" className="space-y-5"><div className="flex items-center justify-between rounded-xl border p-4"><span className="text-muted-foreground">Status</span><StatusBadge status={nodeData.status} /></div><dl className="grid gap-4 rounded-xl border p-4 text-sm">{[[app ? "Framework" : "Service", nodeData.brand], [app ? "Domain" : "Version", app ? nodeDomains.find((domain) => domain.isPrimary)?.hostname ?? "Not configured" : service?.version], ["Install", app?.installCommand ?? "Managed image"], ["Build", app?.buildCommand ?? "Not required"], ["Start", app?.startCommand ?? "Managed by Hefesto"]].map(([label, value]) => <div key={label} className="grid grid-cols-[90px_1fr] gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="truncate font-mono text-xs">{value}</dd></div>)}</dl></TabsContent>
         <TabsContent value="variables" className="space-y-3">{["DATABASE_URL", "NODE_ENV", "SESSION_SECRET"].map((key) => <div key={key} className="rounded-xl border p-3"><Label className="text-xs">{key}</Label><p className="mt-1 font-mono text-xs text-muted-foreground">••••••••••••••••</p></div>)}</TabsContent>
         <TabsContent value="domains" className="space-y-3">{nodeDomains.length ? nodeDomains.map((domain) => <div key={domain.id} className="flex items-center gap-3 rounded-xl border p-3"><ExternalLink className="size-4 text-muted-foreground" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{domain.hostname}</p><p className="text-xs capitalize text-muted-foreground">SSL {domain.sslStatus}</p></div>{domain.isPrimary && <span className="text-xs text-muted-foreground">Primary</span>}</div>) : <p className="py-10 text-center text-sm text-muted-foreground">No domains configured for this resource.</p>}</TabsContent>
-        <TabsContent value="logs"><LiveLogs deploymentId={deployment?.id} /></TabsContent>
+        <TabsContent value="logs"><LiveLogs deploymentId={logDeploymentId ?? deployment?.id} /></TabsContent>
         <TabsContent value="settings"><div className="rounded-xl border border-red-200 p-4 dark:border-red-900"><div className="flex gap-3"><AlertTriangle className="size-4 text-red-600" /><div><h3 className="font-medium text-red-700 dark:text-red-400">Danger zone</h3><p className="mt-1 text-xs text-muted-foreground">Permanently remove this resource and its configuration.</p><Button variant="destructive" size="sm" className="mt-4"><Trash2 className="size-3.5" />Delete resource</Button></div></div></div></TabsContent>
       </div>
     </Tabs>
@@ -222,8 +230,19 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
   const [configTab, setConfigTab] = useState<PanelTab>("overview");
   const [addOpen, setAddOpen] = useState(false);
+  const [runtimeDeployments, setRuntimeDeployments] = useState<Deployment[]>([]);
+  const [logDeploymentByApp, setLogDeploymentByApp] = useState<Record<string, string>>({});
   const flowRef = useRef<ReactFlowInstance<CanvasNode, Edge> | null>(null);
   const selectedNode = nodes.find((node) => node.id === configNodeId) ?? null;
+  const allDeployments = useMemo(() => {
+    const runtimeIds = new Set(runtimeDeployments.map((deployment) => deployment.id));
+    return [...runtimeDeployments, ...deployments.filter((deployment) => !runtimeIds.has(deployment.id))];
+  }, [deployments, runtimeDeployments]);
+  const activeRuntimeKey = runtimeDeployments
+    .filter((deployment) => activeDeploymentStatuses.has(deployment.status))
+    .map((deployment) => `${deployment.id}:${deployment.status}:${deployment.applicationId}`)
+    .sort()
+    .join("|");
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -241,6 +260,68 @@ export function ProjectCanvas({ project, applications, services, templates, doma
     setConfigTab(tab);
   };
   const closeConfig = () => setConfigNodeId(null);
+  const showDeploymentLogs = useCallback((applicationId: string, deploymentId: string) => {
+    setLogDeploymentByApp((current) => ({ ...current, [applicationId]: deploymentId }));
+    setSelectedNodeId(applicationId);
+    setConfigNodeId(applicationId);
+    setConfigTab("logs");
+  }, []);
+  const deployApplication = useCallback(async (nodeId: string) => {
+    const node = nodes.find((item) => item.id === nodeId);
+    const applicationId = node?.data.application?.id;
+    if (!applicationId) { toast.error("Only applications can be deployed"); return; }
+    try {
+      const response = await fetch("/api/deployments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ applicationId }) });
+      const body = await response.json() as { data?: { deploymentId: string }; error?: { message?: string } };
+      if (!response.ok || !body.data?.deploymentId) throw new Error(body.error?.message ?? "Could not start deployment");
+      const detailResponse = await fetch(`/api/deployments/${body.data.deploymentId}`);
+      const detailBody = await detailResponse.json() as { data?: Deployment };
+      if (!detailResponse.ok || !detailBody.data) throw new Error("Deployment started, but its status could not be loaded");
+      const deployment = detailBody.data;
+      setRuntimeDeployments((current) => [deployment, ...current.filter((item) => item.id !== deployment.id)]);
+      setNodes((current) => current.map((item) => item.id === applicationId ? { ...item, data: { ...item.data, status: deploymentNodeStatus(deployment.status) } } : item));
+      setEdges((current) => current.map((edge) => edge.source === applicationId ? { ...edge, data: { ...edge.data, active: true } } : edge));
+      showDeploymentLogs(applicationId, deployment.id);
+      toast.success(`Deploy queued for ${node.data.name}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not start deployment");
+    }
+  }, [nodes, setEdges, setNodes, showDeploymentLogs]);
+
+  useEffect(() => {
+    if (!activeRuntimeKey) return;
+    const active = activeRuntimeKey.split("|").map((entry) => {
+      const [id, status, applicationId] = entry.split(":") as [string, DeploymentStatus, string];
+      return { id, status, applicationId };
+    });
+    let cancelled = false;
+    const poll = async () => {
+      const results = await Promise.all(active.map(async (deployment) => {
+        try {
+          const response = await fetch(`/api/deployments/${deployment.id}`, { cache: "no-store" });
+          const body = await response.json() as { data?: Deployment };
+          return response.ok && body.data ? { previous: deployment, next: body.data } : null;
+        } catch { return null; }
+      }));
+      if (cancelled) return;
+      for (const result of results) {
+        if (!result) continue;
+        const { previous, next } = result;
+        setRuntimeDeployments((current) => [next, ...current.filter((item) => item.id !== next.id)]);
+        setNodes((current) => current.map((item) => item.id === next.applicationId ? { ...item, data: { ...item.data, status: deploymentNodeStatus(next.status) } } : item));
+        const hasAnotherActiveDeployment = activeApplicationIds.includes(next.applicationId) || active.some((deployment) => deployment.id !== next.id && deployment.applicationId === next.applicationId);
+        setEdges((current) => current.map((edge) => edge.source === next.applicationId ? { ...edge, data: { ...edge.data, active: activeDeploymentStatuses.has(next.status) || hasAnotherActiveDeployment } } : edge));
+        if (activeDeploymentStatuses.has(previous.status) && !activeDeploymentStatuses.has(next.status)) {
+          const action = { label: "Ver logs", onClick: () => showDeploymentLogs(next.applicationId, next.id) };
+          if (next.status === "running") toast.success("Deployment completed successfully", { action });
+          else if (next.status === "failed") toast.error("Deployment failed", { action });
+        }
+      }
+    };
+    const timer = window.setInterval(poll, 2000);
+    void poll();
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [activeApplicationIds, activeRuntimeKey, setEdges, setNodes, showDeploymentLogs]);
   const removeNode = (nodeId: string) => {
     const node = nodes.find((item) => item.id === nodeId);
     setNodes((current) => current.filter((item) => item.id !== nodeId));
@@ -254,8 +335,8 @@ export function ProjectCanvas({ project, applications, services, templates, doma
     setNodes((current) => current.map((item) => ({ ...item, selected: item.id === node.id })));
   };
   const actionContext: NodeActionContextValue = {
-    selectedNodeId, deployments, openConfig,
-    deploy: (nodeId) => toast.success(`Deploy queued for ${nodes.find((node) => node.id === nodeId)?.data.name ?? "resource"}`),
+    selectedNodeId, deployments: allDeployments, openConfig,
+    deploy: deployApplication,
     restart: (nodeId) => toast.success(`Restart queued for ${nodes.find((node) => node.id === nodeId)?.data.name ?? "resource"}`),
     remove: removeNode,
   };
@@ -289,6 +370,6 @@ export function ProjectCanvas({ project, applications, services, templates, doma
       <Button className="canvas-add-button absolute rounded-full shadow-sm" onClick={() => setAddOpen((value) => !value)}><Plus className="size-4" />Add <kbd className="rounded border border-white/20 px-1 text-[10px]">A</kbd></Button>
       {!nodes.length && <EmptyState icon={PackageOpen} title="Add your first service" description="Start with an application or managed database." action={<Button onClick={() => setAddOpen(true)}><Plus className="size-4" />Add resource</Button>} className="absolute top-1/2 left-1/2 z-10 w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-dashed bg-white/90 shadow-sm backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/90" />}
     </div>
-    {selectedNode && <NodeConfigDialog key={selectedNode.id} nodeData={selectedNode.data} activeTab={configTab} onTabChange={(tab) => openConfig(selectedNode.id, tab)} onClose={closeConfig} domains={domains} deployments={deployments} />}
+    {selectedNode && <NodeConfigDialog key={selectedNode.id} nodeData={selectedNode.data} activeTab={configTab} onTabChange={(tab) => openConfig(selectedNode.id, tab)} onClose={closeConfig} onDeploy={() => void deployApplication(selectedNode.id)} domains={domains} deployments={allDeployments} logDeploymentId={selectedNode.data.application ? logDeploymentByApp[selectedNode.data.application.id] : undefined} />}
   </>;
 }
