@@ -4,9 +4,14 @@ import { z } from "zod";
 
 import type { DeploymentStatus } from "@/lib/types";
 import { dataResponse, errorResponse } from "@/server/http";
+import { isDatabaseEnabled } from "@/server/env";
 import { enqueueDeployment } from "@/server/queue";
 import { getApplication } from "@/server/services/applications";
-import { listDeployments } from "@/server/services/deployments";
+import {
+  createSimulatedDeployment,
+  listDeployments,
+  triggerDeployment,
+} from "@/server/services/deployments";
 
 const deploymentStatuses = new Set<DeploymentStatus>([
   "queued",
@@ -60,7 +65,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const deploymentId = randomUUID();
   const application = await getApplication(result.data.applicationId);
   if (!application) {
     return errorResponse(
@@ -70,13 +74,17 @@ export async function POST(request: Request) {
     );
   }
 
+  const deployment = isDatabaseEnabled()
+    ? await triggerDeployment(application.id)
+    : createSimulatedDeployment(randomUUID(), application);
+
   const mode = await enqueueDeployment({
-    deploymentId,
+    deploymentId: deployment.id,
     applicationId: result.data.applicationId,
   });
 
   return dataResponse(
-    { deploymentId, status: "queued" as const, mode },
+    { deploymentId: deployment.id, status: deployment.status, mode },
     { status: 202 },
   );
 }
