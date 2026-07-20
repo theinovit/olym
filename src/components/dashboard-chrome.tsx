@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { Activity, Flame, FolderKanban, Globe, House, LogOut, Plus, Rocket, Server, Settings, UserRound } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useAuthSession } from "@/components/use-auth-session";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -23,6 +25,25 @@ const navigation = [
 
 export function DashboardChrome() {
   const pathname = usePathname();
+  const router = useRouter();
+  const user = useAuthSession();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const initials = user.email.split("@")[0].slice(0, 2).toUpperCase();
+
+  const logout = async () => {
+    setLogoutError(null);
+    setLoggingOut(true);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Could not sign out");
+      router.replace("/login");
+      router.refresh();
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : "Could not sign out");
+      setLoggingOut(false);
+    }
+  };
 
   return <TooltipProvider>
     <div className="chrome-logo fixed z-40 flex h-12 items-center gap-2 rounded-2xl border border-neutral-200 bg-white/95 p-1.5 pr-2 shadow-md backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95">
@@ -44,12 +65,13 @@ export function DashboardChrome() {
     </nav>
 
     <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" className="chrome-account fixed z-40 size-12 rounded-2xl border border-neutral-200 bg-white/95 p-1.5 shadow-md backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95"><Avatar className="size-9"><AvatarFallback className="bg-neutral-950 text-xs text-white dark:bg-white dark:text-neutral-950">RS</AvatarFallback></Avatar><span className="sr-only">Open account menu</span></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" className="chrome-account fixed z-40 size-12 rounded-2xl border border-neutral-200 bg-white/95 p-1.5 shadow-md backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95"><Avatar className="size-9"><AvatarFallback className="bg-neutral-950 text-xs text-white dark:bg-white dark:text-neutral-950">{initials}</AvatarFallback></Avatar><span className="sr-only">Open account menu for {user.email}</span></Button></DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="end" sideOffset={10} className="w-56 rounded-xl">
-        <DropdownMenuLabel><span className="block text-sm text-foreground">Rodrigo Silverio</span><span className="block font-normal">rodrigo@acme.com</span></DropdownMenuLabel>
+        <DropdownMenuLabel><span className="block text-sm text-foreground">Administrator</span><span className="block truncate font-normal">{user.email}</span></DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem><UserRound />Account</DropdownMenuItem>
-        <DropdownMenuItem variant="destructive"><LogOut />Sign out</DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" disabled={loggingOut} onSelect={(event) => { event.preventDefault(); void logout(); }}><LogOut />{loggingOut ? "Signing out…" : "Sign out"}</DropdownMenuItem>
+        {logoutError && <p role="alert" className="px-1.5 py-1 text-xs text-red-600 dark:text-red-400">{logoutError}</p>}
       </DropdownMenuContent>
     </DropdownMenu>
   </TooltipProvider>;
