@@ -1,4 +1,4 @@
-// Hefesto domain types — the contract between Frontend and Backend.
+// Olym domain types — the contract between Frontend and Backend.
 // Owned by the CEO; changes must be coordinated.
 
 export type EnvironmentName = "production" | "staging" | "development";

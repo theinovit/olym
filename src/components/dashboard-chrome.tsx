@@ -28,7 +28,7 @@ export function DashboardChrome() {
     <div className="chrome-logo fixed z-40 flex h-12 items-center gap-2 rounded-2xl border border-neutral-200 bg-white/95 p-1.5 pr-2 shadow-md backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95">
       <Link href="/home" className="flex items-center gap-2 rounded-xl px-1.5">
         <span className="flex size-8 items-center justify-center rounded-xl bg-neutral-950 text-white dark:bg-white dark:text-neutral-950"><Flame className="size-4" /></span>
-        <span className="text-sm font-semibold tracking-tight">Hefesto</span>
+        <span className="text-sm font-semibold tracking-tight">Olym</span>
       </Link>
       <span className="h-6 w-px bg-border" />
       <ThemeToggle />

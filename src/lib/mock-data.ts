@@ -254,7 +254,7 @@ export const mockDomains: Domain[] = [
   {
     id: "dom_02",
     applicationId: "app_01",
-    hostname: "storefront-web.hefesto.app",
+    hostname: "storefront-web.olym.app",
     isPrimary: false,
     sslStatus: "active",
     createdAt: "2026-05-03T11:05:00.000Z",
@@ -270,7 +270,7 @@ export const mockDomains: Domain[] = [
   {
     id: "dom_04",
     applicationId: "app_03",
-    hostname: "taskloop.hefesto.app",
+    hostname: "taskloop.olym.app",
     isPrimary: true,
     sslStatus: "pending",
     createdAt: "2026-05-18T16:30:00.000Z",

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hefesto",
+  title: "Olym",
   description:
     "Self-hosted PaaS — build, deploy, and scale on your own infrastructure.",
 };
