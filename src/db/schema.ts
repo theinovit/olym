@@ -1,9 +1,10 @@
 // Drizzle schema — mirrors the domain contract in src/lib/types.ts.
 // Owned by Backend. Migrations live in src/db/migrations (drizzle-kit).
 
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   integer,
   pgEnum,
   pgTable,
@@ -85,6 +86,20 @@ export const users = pgTable("users", {
     .notNull()
     .defaultNow(),
 });
+
+export const instanceSettings = pgTable(
+  "instance_settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check("instance_settings_singleton", sql`${table.id} = 1`),
+  ],
+);
 
 export const servers = pgTable("servers", {
   id: uuid("id").primaryKey().defaultRandom(),

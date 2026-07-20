@@ -13,6 +13,7 @@ import {
 const credentialsSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(8).max(256),
+  instanceName: z.string().trim().min(1).max(120),
 });
 
 export async function POST(request: Request) {
@@ -32,7 +33,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const user = await setupAdminAccount(result.data.email, result.data.password);
+    const user = await setupAdminAccount(
+      result.data.email,
+      result.data.password,
+      result.data.instanceName,
+    );
     (await cookies()).set(
       SESSION_COOKIE_NAME,
       createSessionToken(user.id),

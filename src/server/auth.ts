@@ -26,6 +26,7 @@ export async function hasAdminAccount(): Promise<boolean> {
 export async function setupAdminAccount(
   email: string,
   password: string,
+  instanceName: string,
 ): Promise<AuthenticatedUser> {
   const passwordHash = await hash(password, BCRYPT_ROUNDS);
   return getDb().transaction(async (transaction) => {
@@ -45,6 +46,10 @@ export async function setupAdminAccount(
       .insert(schema.users)
       .values({ email: normalizeEmail(email), passwordHash })
       .returning({ id: schema.users.id, email: schema.users.email });
+    await transaction.insert(schema.instanceSettings).values({
+      id: 1,
+      name: instanceName.trim(),
+    });
     return user;
   });
 }
