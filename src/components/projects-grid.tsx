@@ -34,11 +34,10 @@ export function ProjectsGrid() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-7">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Workspace / Projects</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Projects</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
           <p className="mt-1 text-sm text-muted-foreground">Manage applications and environments across your infrastructure.</p>
         </div>
         <div className="flex w-full gap-2 sm:w-auto">

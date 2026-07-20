@@ -27,12 +27,11 @@ export function ProjectDetail({ project }: { project: Project }) {
   const deployments = mockDeployments.filter((deployment) => appIds.has(deployment.applicationId)).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const activeApplicationIds = deployments.filter((deployment) => deployment.status === "building" || deployment.status === "deploying").map((deployment) => deployment.applicationId);
 
-  return <div className="mx-auto w-full max-w-[1600px] space-y-5">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div><p className="text-sm text-muted-foreground">Projects / {project.name}</p><div className="mt-1 flex items-center gap-3"><h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>{allApps.length > 0 && <StatusBadge status={aggregateStatus(allApps.map((app) => app.status))} />}</div><p className="mt-1 text-sm text-muted-foreground">{project.description}</p></div>
-      <Tabs value={environment} onValueChange={(value) => setEnvironment(value as EnvironmentName)}><TabsList><TabsTrigger value="production">Production</TabsTrigger><TabsTrigger value="staging">Staging</TabsTrigger><TabsTrigger value="development">Development</TabsTrigger></TabsList></Tabs>
-    </div>
+  return <div className="fixed inset-0 z-10 overflow-hidden">
+    <style>{`.project-floating-title { position: absolute; top: 16px; left: 224px; z-index: 20; pointer-events: none; } .project-floating-environment { position: absolute; top: 16px; right: 176px; z-index: 20; } @media (max-width: 767px) { .project-floating-title, .project-floating-environment { display: none; } }`}</style>
     <ProjectCanvas project={project} applications={apps} services={services} templates={mockServiceTemplates} domains={mockDomains} deployments={deployments} bindings={mockBindings} activeApplicationIds={activeApplicationIds} />
+    <div className="project-floating-title"><div className="flex items-center gap-3"><h1 className="text-xl font-semibold tracking-tight drop-shadow-sm">{project.name}</h1>{allApps.length > 0 && <StatusBadge status={aggregateStatus(allApps.map((app) => app.status))} />}</div><p className="mt-0.5 max-w-sm truncate text-xs text-muted-foreground">{project.description}</p></div>
+    <Tabs value={environment} onValueChange={(value) => setEnvironment(value as EnvironmentName)} className="project-floating-environment"><TabsList className="rounded-2xl border bg-white/95 shadow-md backdrop-blur-sm dark:bg-neutral-900/95"><TabsTrigger value="production">Production</TabsTrigger><TabsTrigger value="staging">Staging</TabsTrigger><TabsTrigger value="development">Development</TabsTrigger></TabsList></Tabs>
     <Toaster richColors position="bottom-right" />
   </div>;
 }

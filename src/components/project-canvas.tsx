@@ -252,7 +252,6 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   const onNodeClick: NodeMouseHandler<CanvasNode> = (_, node) => {
     setSelectedNodeId(node.id);
     setNodes((current) => current.map((item) => ({ ...item, selected: item.id === node.id })));
-    openConfig(node.id, "overview");
   };
   const actionContext: NodeActionContextValue = {
     selectedNodeId, deployments, openConfig,
@@ -280,14 +279,14 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   };
 
   return <>
-    <style>{`.hefesto-project-canvas { --canvas-edge: rgba(163, 163, 163, 0.7); } .dark .hefesto-project-canvas { --canvas-edge: rgba(115, 115, 115, 0.7); }`}</style>
-    <div className="hefesto-project-canvas relative h-[min(720px,calc(100vh-240px))] min-h-[560px] overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
+    <style>{`.hefesto-project-canvas { --canvas-edge: rgba(163, 163, 163, 0.7); } .dark .hefesto-project-canvas { --canvas-edge: rgba(115, 115, 115, 0.7); } .hefesto-project-canvas aside { left: 96px; } .canvas-add-button { top: 80px; right: 16px; z-index: 10; }`}</style>
+    <div className="hefesto-project-canvas relative h-svh w-full overflow-hidden bg-neutral-50 dark:bg-neutral-950">
       <NodeActionContext.Provider value={actionContext}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} onNodeDoubleClick={(_, node) => openConfig(node.id)} onPaneClick={() => { setSelectedNodeId(null); setConfigNodeId(null); setNodes((current) => current.map((node) => ({ ...node, selected: false }))); }} onInit={(instance) => { flowRef.current = instance; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const raw = event.dataTransfer.getData("application/hefesto-resource"); if (!raw || !flowRef.current) return; try { addResource(JSON.parse(raw) as PaletteItem, flowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch { toast.error("Could not add this resource"); } }} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: .25 }} minZoom={.45} maxZoom={1.6} deleteKeyCode={["Backspace", "Delete"]}>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="currentColor" className="text-neutral-300/20 dark:text-neutral-700/20" />
-        <Controls showInteractive={false} className="!overflow-hidden !rounded-lg !border-neutral-200 !bg-white !shadow-sm dark:!border-neutral-800 dark:!bg-neutral-900 [&_button]:!border-neutral-200 [&_button]:!bg-white [&_button]:!text-neutral-700 dark:[&_button]:!border-neutral-800 dark:[&_button]:!bg-neutral-900 dark:[&_button]:!text-neutral-300" />
+        <Controls showInteractive={false} style={{ left: 96, bottom: 16 }} className="!overflow-hidden !rounded-lg !border-neutral-200 !bg-white !shadow-sm dark:!border-neutral-800 dark:!bg-neutral-900 [&_button]:!border-neutral-200 [&_button]:!bg-white [&_button]:!text-neutral-700 dark:[&_button]:!border-neutral-800 dark:[&_button]:!bg-neutral-900 dark:[&_button]:!text-neutral-300" />
       </ReactFlow></NodeActionContext.Provider>
       <AddPalette open={addOpen} onOpenChange={setAddOpen} onAdd={addResource} />
-      <Button className="absolute top-4 right-4 z-10 rounded-full shadow-sm" onClick={() => setAddOpen((value) => !value)}><Plus className="size-4" />Add <kbd className="rounded border border-white/20 px-1 text-[10px]">A</kbd></Button>
+      <Button className="canvas-add-button absolute rounded-full shadow-sm" onClick={() => setAddOpen((value) => !value)}><Plus className="size-4" />Add <kbd className="rounded border border-white/20 px-1 text-[10px]">A</kbd></Button>
       {!nodes.length && <EmptyState icon={PackageOpen} title="Add your first service" description="Start with an application or managed database." action={<Button onClick={() => setAddOpen(true)}><Plus className="size-4" />Add resource</Button>} className="absolute top-1/2 left-1/2 z-10 w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-dashed bg-white/90 shadow-sm backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/90" />}
     </div>
     {selectedNode && <NodeConfigDialog key={selectedNode.id} nodeData={selectedNode.data} activeTab={configTab} onTabChange={(tab) => openConfig(selectedNode.id, tab)} onClose={closeConfig} domains={domains} deployments={deployments} />}

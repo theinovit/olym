@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FolderKanban, Globe, House, Plus, Rocket, Search, Server, Settings } from "lucide-react";
+import { Activity, FolderKanban, Globe, House, Plus, Rocket, Search, Server, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from "@/components/ui/command";
@@ -13,6 +13,7 @@ const pages = [
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Deployments", href: "/deployments", icon: Rocket },
   { label: "Servers", href: "/servers", icon: Server },
+  { label: "Monitoring", href: "/monitoring", icon: Activity },
   { label: "Domains", href: "/domains", icon: Globe },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
@@ -39,7 +40,7 @@ export function CommandPalette() {
 
   return (
     <>
-      <Button variant="outline" size="sm" className="ml-auto h-8 gap-2 text-muted-foreground" onClick={() => setOpen(true)}>
+      <Button variant="outline" size="sm" className="chrome-command fixed z-40 h-11 gap-2 rounded-2xl border-neutral-200 bg-white/95 px-3 text-muted-foreground shadow-md backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95" onClick={() => setOpen(true)}>
         <Search className="size-3.5" /><span className="hidden sm:inline">Search</span><kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px] font-medium">⌘K</kbd>
       </Button>
       <CommandDialog open={open} onOpenChange={setOpen} className="sm:max-w-lg">

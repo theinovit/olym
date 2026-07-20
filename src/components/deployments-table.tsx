@@ -39,10 +39,9 @@ export function DeploymentsTable() {
     });
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-7">
       <div>
-        <p className="text-sm text-muted-foreground">Workspace / Deployments</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Deployments</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Deployments</h1>
         <p className="mt-1 text-sm text-muted-foreground">Track builds and releases across all applications.</p>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
