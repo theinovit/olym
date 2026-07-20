@@ -18,6 +18,7 @@ const localAuthStatus: AuthStatusResponse = { hasAccount: true };
 export function AuthForm() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode | null>(null);
+  const [instanceName, setInstanceName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +51,7 @@ export function AuthForm() {
       const response = await fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ ...(mode === "setup" ? { instanceName: instanceName.trim() } : {}), email: email.trim(), password }),
       });
       const body = await response.json().catch(() => ({})) as ApiErrorResponse;
       if (!response.ok) throw new Error(body.error?.message ?? (response.status === 401 ? "Invalid email or password." : "Authentication failed. Please try again."));
@@ -72,6 +73,7 @@ export function AuthForm() {
     <CardContent className="px-7 py-6">
       {!mode ? <div className="flex min-h-44 items-center justify-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin text-[#f54900]" />Loading authentication status…</div> : <form className="space-y-5" onSubmit={submit}>
         {error && <div role="alert" className="flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"><AlertCircle className="mt-0.5 size-4 shrink-0" /><span>{error}</span></div>}
+        {setup && <div className="space-y-2"><Label htmlFor="instance-name">Instance name</Label><Input id="instance-name" name="instanceName" type="text" autoComplete="organization" placeholder="Acme Infra" value={instanceName} onChange={(event) => setInstanceName(event.target.value)} disabled={submitting} required maxLength={80} className="h-10" /><p className="text-xs text-muted-foreground">Shown across this Olym installation.</p></div>}
         <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" autoComplete="email" placeholder="admin@example.com" value={email} onChange={(event) => setEmail(event.target.value)} disabled={submitting} required className="h-10" /></div>
         <div className="space-y-2"><Label htmlFor="password">Password</Label><Input id="password" name="password" type="password" autoComplete={setup ? "new-password" : "current-password"} placeholder="Enter your password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={submitting} required minLength={8} className="h-10" />{setup && <p className="text-xs text-muted-foreground">Use at least 8 characters.</p>}</div>
         <Button type="submit" disabled={submitting} className="h-10 w-full bg-gradient-to-r from-[#f54900] to-amber-500 text-white shadow-sm hover:opacity-90">{submitting ? <><LoaderCircle className="size-4 animate-spin" />{setup ? "Creating account…" : "Signing in…"}</> : setup ? "Create account" : "Sign in"}</Button>
