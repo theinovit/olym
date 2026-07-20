@@ -124,6 +124,17 @@ export interface EnvVar {
   createdAt: string;
 }
 
+// A Binding wires an application to a service inside the project canvas
+// (Railway-style): connecting injects the service credentials into the app.
+export interface Binding {
+  id: string;
+  applicationId: string;
+  serviceInstanceId: string;
+  // env var injected into the application, e.g. DATABASE_URL, REDIS_URL
+  injectedVarKey: string;
+  createdAt: string;
+}
+
 export interface LogLine {
   timestamp: string;
   stream: "stdout" | "stderr" | "system";
