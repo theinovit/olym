@@ -11,45 +11,77 @@ export interface RepositoryValidation {
   branches: string[];
 }
 
-function authenticatedRepositoryUrl(repoUrl: string, token?: string): string {
+const ALLOWED_GIT_HOSTS = new Set([
+  "github.com",
+  "gitlab.com",
+  "bitbucket.org",
+]);
+
+function validatedRepositoryUrl(repoUrl: string): URL {
   let url: URL;
   try {
     url = new URL(repoUrl);
   } catch {
     throw new BadRequestError("INVALID_REPOSITORY_URL", "Repository URL is invalid.");
   }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
+  if (url.protocol !== "https:") {
     throw new BadRequestError(
       "INVALID_REPOSITORY_URL",
-      "Repository URL must use HTTP or HTTPS.",
+      "Repository URL must use HTTPS.",
     );
   }
-  const effectiveToken =
-    token ||
-    (url.hostname.toLowerCase() === "github.com"
-      ? process.env.GITHUB_TOKEN?.trim()
-      : undefined);
-  if (effectiveToken) {
-    url.username = "x-access-token";
-    url.password = effectiveToken;
+  if (url.port && url.port !== "443") {
+    throw new BadRequestError(
+      "INVALID_REPOSITORY_URL",
+      "Repository URL must use the default HTTPS port.",
+    );
   }
-  return url.toString();
+  if (!ALLOWED_GIT_HOSTS.has(url.hostname.toLowerCase())) {
+    throw new BadRequestError(
+      "INVALID_REPOSITORY_HOST",
+      "Repository host is not allowed.",
+    );
+  }
+  if (url.username || url.password) {
+    throw new BadRequestError(
+      "INVALID_REPOSITORY_URL",
+      "Repository URL must not contain credentials.",
+    );
+  }
+  return url;
 }
 
 export async function validateRepository(
   repoUrl: string,
   token?: string,
 ): Promise<RepositoryValidation> {
-  const remoteUrl = authenticatedRepositoryUrl(repoUrl, token);
+  const remoteUrl = validatedRepositoryUrl(repoUrl);
+  const effectiveToken =
+    token ||
+    (remoteUrl.hostname.toLowerCase() === "github.com"
+      ? process.env.GITHUB_TOKEN?.trim()
+      : undefined);
+  if (effectiveToken && /[\r\n]/.test(effectiveToken)) {
+    throw new BadRequestError("INVALID_GIT_TOKEN", "Git token is invalid.");
+  }
+  const credentialHelper =
+    "credential.helper=!f() { echo username=x-access-token; echo password=$HEFESTO_GIT_TOKEN; }; f";
+  const args = effectiveToken
+    ? ["-c", credentialHelper, "ls-remote", "--symref", remoteUrl.toString()]
+    : ["ls-remote", "--symref", remoteUrl.toString()];
   try {
     const { stdout } = await execFileAsync(
       "git",
-      ["ls-remote", "--symref", remoteUrl, "HEAD", "refs/heads/*"],
+      args,
       {
         timeout: 10_000,
         maxBuffer: 1024 * 1024,
         windowsHide: true,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: "0",
+          HEFESTO_GIT_TOKEN: effectiveToken ?? "",
+        },
       },
     );
     const branches = Array.from(
@@ -66,7 +98,7 @@ export async function validateRepository(
       null;
     return { accessible: true, defaultBranch, branches };
   } catch {
-    // Never surface the child-process error: it can contain the authenticated URL.
+    // Never surface or log child-process errors, arguments, or environment.
     return { accessible: false, defaultBranch: null, branches: [] };
   }
 }

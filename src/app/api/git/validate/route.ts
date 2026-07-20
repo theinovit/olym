@@ -11,21 +11,35 @@ const requestSchema = z.object({
 
 const RATE_LIMIT = 5;
 const RATE_WINDOW_MS = 10_000;
+const MAX_RATE_LIMIT_KEYS = 10_000;
 const requestsByIp = new Map<string, number[]>();
 
 function clientIp(request: Request): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip")?.trim() ||
-    "unknown"
-  );
+  const connectedRequest = request as Request & {
+    ip?: string;
+    connection?: { remoteAddress?: string };
+    socket?: { remoteAddress?: string };
+  };
+  return connectedRequest.ip?.trim() ||
+    connectedRequest.connection?.remoteAddress?.trim() ||
+    connectedRequest.socket?.remoteAddress?.trim() ||
+    "unknown";
 }
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
-  const recent = (requestsByIp.get(ip) ?? []).filter(
-    (timestamp) => now - timestamp < RATE_WINDOW_MS,
-  );
+  for (const [key, timestamps] of requestsByIp) {
+    const recent = timestamps.filter(
+      (timestamp) => now - timestamp < RATE_WINDOW_MS,
+    );
+    if (recent.length) requestsByIp.set(key, recent);
+    else requestsByIp.delete(key);
+  }
+  if (!requestsByIp.has(ip) && requestsByIp.size >= MAX_RATE_LIMIT_KEYS) {
+    const oldestKey = requestsByIp.keys().next().value as string | undefined;
+    if (oldestKey) requestsByIp.delete(oldestKey);
+  }
+  const recent = requestsByIp.get(ip) ?? [];
   recent.push(now);
   requestsByIp.set(ip, recent);
   return recent.length > RATE_LIMIT;

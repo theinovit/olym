@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { DeploymentStatus } from "@/lib/types";
 import { dataResponse, errorResponse } from "@/server/http";
 import { enqueueDeployment } from "@/server/queue";
+import { getApplication } from "@/server/services/applications";
 import { listDeployments } from "@/server/services/deployments";
 
 const deploymentStatuses = new Set<DeploymentStatus>([
@@ -60,6 +61,14 @@ export async function POST(request: Request) {
   }
 
   const deploymentId = randomUUID();
+  const application = await getApplication(result.data.applicationId);
+  if (!application) {
+    return errorResponse(
+      404,
+      "APPLICATION_NOT_FOUND",
+      "Application not found.",
+    );
+  }
 
   const mode = await enqueueDeployment({
     deploymentId,
