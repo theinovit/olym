@@ -3,6 +3,7 @@
 
 import type {
   Application,
+  Binding,
   Deployment,
   Domain,
   Project,
@@ -357,4 +358,11 @@ export const mockServiceInstances: ServiceInstance[] = [
     status: "running",
     createdAt: "2026-06-02T14:00:00.000Z",
   },
+];
+
+export const mockBindings: Binding[] = [
+  { id: "bind_01", applicationId: "app_01", serviceInstanceId: "svc_01", injectedVarKey: "DATABASE_URL", createdAt: "2026-05-03T11:12:00.000Z" },
+  { id: "bind_02", applicationId: "app_01", serviceInstanceId: "svc_02", injectedVarKey: "REDIS_URL", createdAt: "2026-05-03T11:14:00.000Z" },
+  { id: "bind_03", applicationId: "app_02", serviceInstanceId: "svc_01", injectedVarKey: "DATABASE_URL", createdAt: "2026-05-04T09:45:00.000Z" },
+  { id: "bind_04", applicationId: "app_03", serviceInstanceId: "svc_03", injectedVarKey: "DATABASE_URL", createdAt: "2026-05-18T16:12:00.000Z" },
 ];
