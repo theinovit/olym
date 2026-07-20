@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Background, BackgroundVariant, Controls, Handle, NodeToolbar, Position, ReactFlow,
   useEdgesState, useInternalNode, useNodesState, type Connection, type Edge, type EdgeProps,
@@ -70,12 +70,13 @@ function ToolbarAction({ label, icon: Icon, onClick, danger = false }: { label: 
 
 function PerimeterHandles({ kind }: { kind: CanvasNodeData["kind"] }) {
   const type = kind === "application" ? "source" : "target";
-  const shared = "!absolute !m-0 !rounded-none !border-0 !bg-transparent !opacity-0 cursor-crosshair";
+  const shared = "!absolute !m-0 !rounded-none !border-0 !bg-transparent !opacity-0 !shadow-none !outline-none hover:!bg-transparent hover:!opacity-0 cursor-crosshair";
+  const invisibleStyle: CSSProperties = { opacity: 0, background: "transparent", border: 0, boxShadow: "none", outlineStyle: "none", outlineWidth: 0 };
   return <>
-    <Handle id={`${type}-top`} type={type} position={Position.Top} className={cn(shared, "!top-0 !left-[10px] !h-[10px] !w-[calc(100%_-_20px)] !translate-x-0 !translate-y-0")} />
-    <Handle id={`${type}-right`} type={type} position={Position.Right} className={cn(shared, "!top-[10px] !right-0 !h-[calc(100%_-_20px)] !w-[10px] !translate-x-0 !translate-y-0")} />
-    <Handle id={`${type}-bottom`} type={type} position={Position.Bottom} className={cn(shared, "!bottom-0 !left-[10px] !h-[10px] !w-[calc(100%_-_20px)] !translate-x-0 !translate-y-0")} />
-    <Handle id={`${type}-left`} type={type} position={Position.Left} className={cn(shared, "!top-[10px] !left-0 !h-[calc(100%_-_20px)] !w-[10px] !translate-x-0 !translate-y-0")} />
+    <Handle id={`${type}-top`} type={type} position={Position.Top} style={invisibleStyle} className={cn(shared, "!top-0 !left-[10px] !h-[10px] !w-[calc(100%_-_20px)] !translate-x-0 !translate-y-0")} />
+    <Handle id={`${type}-right`} type={type} position={Position.Right} style={invisibleStyle} className={cn(shared, "!top-[10px] !right-0 !h-[calc(100%_-_20px)] !w-[10px] !translate-x-0 !translate-y-0")} />
+    <Handle id={`${type}-bottom`} type={type} position={Position.Bottom} style={invisibleStyle} className={cn(shared, "!bottom-0 !left-[10px] !h-[10px] !w-[calc(100%_-_20px)] !translate-x-0 !translate-y-0")} />
+    <Handle id={`${type}-left`} type={type} position={Position.Left} style={invisibleStyle} className={cn(shared, "!top-[10px] !left-0 !h-[calc(100%_-_20px)] !w-[10px] !translate-x-0 !translate-y-0")} />
   </>;
 }
 
@@ -136,7 +137,7 @@ const KiteEdge = memo(function KiteEdge({ id, source, target, markerEnd, style, 
   const sag = Math.min(120, dist * 0.35);
   const path = `M ${sourceX},${sourceY} C ${sourceX + dx * 0.25},${sourceY + sag} ${sourceX + dx * 0.75},${targetY + sag} ${targetX},${targetY}`;
   const active = Boolean(data?.active);
-  return <path id={id} d={path} markerEnd={markerEnd} className={cn("react-flow__edge-path", !active && "text-neutral-400/70 dark:text-neutral-500/70")} style={{ ...style, fill: "none", stroke: active ? "#f54900" : "currentColor", strokeWidth: 1.5, strokeDasharray: "7 7" }}>{active && <animate attributeName="stroke-dashoffset" from="28" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
+  return <path id={id} d={path} markerEnd={markerEnd} className="react-flow__edge-path" style={{ ...style, fill: "none", stroke: active ? "#f54900" : "var(--canvas-edge)", strokeWidth: 1.5, strokeDasharray: "7 7" }}>{active && <animate attributeName="stroke-dashoffset" from="28" to="0" dur=".8s" repeatCount="indefinite" />}</path>;
 });
 
 const nodeTypes = { resource: ResourceNode };
@@ -284,7 +285,8 @@ export function ProjectCanvas({ project, applications, services, templates, doma
   };
 
   return <>
-    <div ref={canvasRef} className="relative h-[min(720px,calc(100vh-240px))] min-h-[560px] overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
+    <style>{`.hefesto-project-canvas { --canvas-edge: rgba(163, 163, 163, 0.7); } .dark .hefesto-project-canvas { --canvas-edge: rgba(115, 115, 115, 0.7); }`}</style>
+    <div ref={canvasRef} className="hefesto-project-canvas relative h-[min(720px,calc(100vh-240px))] min-h-[560px] overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
       <NodeActionContext.Provider value={actionContext}><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} onNodeDoubleClick={(_, node) => openConfig(node.id)} onPaneClick={() => { setSelectedNodeId(null); setConfigNodeId(null); setNodes((current) => current.map((node) => ({ ...node, selected: false }))); }} onInit={(instance) => { flowRef.current = instance; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const raw = event.dataTransfer.getData("application/hefesto-resource"); if (!raw || !flowRef.current) return; try { addResource(JSON.parse(raw) as PaletteItem, flowRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })); } catch { toast.error("Could not add this resource"); } }} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: .25 }} minZoom={.45} maxZoom={1.6} deleteKeyCode={["Backspace", "Delete"]}>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="currentColor" className="text-neutral-300/20 dark:text-neutral-700/20" />
         <Controls showInteractive={false} className="!overflow-hidden !rounded-lg !border-neutral-200 !bg-white !shadow-sm dark:!border-neutral-800 dark:!bg-neutral-900 [&_button]:!border-neutral-200 [&_button]:!bg-white [&_button]:!text-neutral-700 dark:[&_button]:!border-neutral-800 dark:[&_button]:!bg-neutral-900 dark:[&_button]:!text-neutral-300" />
