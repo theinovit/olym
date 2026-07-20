@@ -15,6 +15,13 @@
       "when": 1784508082916,
       "tag": "0001_powerful_alice",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784565912879,
+      "tag": "0002_premium_raza",
+      "breakpoints": true
     }
   ]
 }
