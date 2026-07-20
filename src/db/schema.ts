@@ -8,6 +8,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -190,6 +191,18 @@ export const serviceInstances = pgTable("service_instances", {
     .defaultNow(),
 });
 
+export const serviceCredentials = pgTable(
+  "service_credentials",
+  {
+    serviceInstanceId: uuid("service_instance_id")
+      .notNull()
+      .references(() => serviceInstances.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.serviceInstanceId, table.key] })],
+);
+
 export const bindings = pgTable(
   "bindings",
   {
@@ -308,6 +321,17 @@ export const serviceInstancesRelations = relations(
       references: [serviceTemplates.id],
     }),
     bindings: many(bindings),
+    credentials: many(serviceCredentials),
+  }),
+);
+
+export const serviceCredentialsRelations = relations(
+  serviceCredentials,
+  ({ one }) => ({
+    serviceInstance: one(serviceInstances, {
+      fields: [serviceCredentials.serviceInstanceId],
+      references: [serviceInstances.id],
+    }),
   }),
 );
 

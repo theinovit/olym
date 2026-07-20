@@ -50,6 +50,13 @@
       "when": 1784576319052,
       "tag": "0006_flat_sabra",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784577390252,
+      "tag": "0007_lonely_madrox",
+      "breakpoints": true
     }
   ]
 }
