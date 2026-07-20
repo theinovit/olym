@@ -18,10 +18,11 @@ import { Dialog, DialogOverlay, DialogPortal, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Application, AppStatus, Binding, Deployment, DeploymentStatus, Domain, EnvironmentName, Framework, LogLine, Project, ServiceInstance, ServiceTemplate } from "@/lib/types";
+import type { Application, AppStatus, Binding, Deployment, DeploymentStatus, Domain, EnvironmentName, EnvVar, Framework, LogLine, Project, ServiceInstance, ServiceTemplate } from "@/lib/types";
 
 type CanvasNodeData = {
   kind: "application" | "service";
@@ -221,6 +222,165 @@ function LiveLogs({ deploymentId, deploymentStatus, appUrl }: { deploymentId?: s
   </div>;
 }
 
+function ApplicationVariables({ application }: { application: Application }) {
+  const [variables, setVariables] = useState<EnvVar[]>([]);
+  const [key, setKey] = useState("");
+  const [value, setValue] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadVariables = async () => {
+      try {
+        const params = new URLSearchParams({ applicationId: application.id, environment: application.environment });
+        const response = await fetch(`/api/env-vars?${params}`, { cache: "no-store" });
+        const body = await response.json() as { data?: EnvVar[]; error?: { message?: string } };
+        if (!response.ok) throw new Error(body.error?.message ?? "Could not load variables");
+        if (!cancelled) setVariables(body.data ?? []);
+      } catch (loadError) {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load variables");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void loadVariables();
+    return () => { cancelled = true; };
+  }, [application.environment, application.id]);
+
+  const addVariable = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedKey = key.trim().toUpperCase();
+    if (!normalizedKey || !value) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/env-vars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: application.id, environment: application.environment, key: normalizedKey, value }),
+      });
+      const body = await response.json() as { data?: EnvVar; error?: { message?: string } };
+      if (!response.ok || !body.data) throw new Error(body.error?.message ?? "Could not add variable");
+      setVariables((current) => [body.data!, ...current.filter((item) => item.key !== body.data!.key)]);
+      setKey("");
+      setValue("");
+      toast.success(`${normalizedKey} added`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not add variable");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <div className="space-y-4">
+    <form className="grid gap-3 rounded-xl border p-4 sm:grid-cols-[1fr_1fr_auto]" onSubmit={addVariable}>
+      <div className="space-y-1.5"><Label htmlFor="variable-key">Name</Label><Input id="variable-key" value={key} onChange={(event) => setKey(event.target.value)} placeholder="API_KEY" autoComplete="off" /></div>
+      <div className="space-y-1.5"><Label htmlFor="variable-value">Value</Label><Input id="variable-value" type="password" value={value} onChange={(event) => setValue(event.target.value)} placeholder="Secret value" autoComplete="new-password" /></div>
+      <Button type="submit" className="self-end" disabled={saving || !key.trim() || !value}>{saving ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}Add</Button>
+    </form>
+    {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+    {loading ? <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading variables…</div> : variables.length ? variables.map((variable) => <div key={variable.id} className="rounded-xl border p-3"><Label className="text-xs">{variable.key}</Label><p className="mt-1 font-mono text-xs text-muted-foreground">{variable.maskedValue}</p></div>) : <p className="py-8 text-center text-sm text-muted-foreground">No variables configured for this environment.</p>}
+  </div>;
+}
+
+function DeploymentHistory({ application, onRedeploy }: { application: Application; onRedeploy: () => void }) {
+  const [history, setHistory] = useState<Deployment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadHistory = async () => {
+      try {
+        const response = await fetch(`/api/deployments?appId=${encodeURIComponent(application.id)}`, { cache: "no-store" });
+        const body = await response.json() as { data?: Deployment[]; error?: { message?: string } };
+        if (!response.ok) throw new Error(body.error?.message ?? "Could not load deployments");
+        if (!cancelled) setHistory((body.data ?? []).slice(0, 5));
+      } catch (loadError) {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load deployments");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void loadHistory();
+    return () => { cancelled = true; };
+  }, [application.id]);
+
+  return <section className="space-y-3">
+    <div className="flex items-center justify-between"><div><h3 className="font-medium">Deployments</h3><p className="text-xs text-muted-foreground">Latest releases for this application.</p></div><Button type="button" variant="outline" size="sm" onClick={onRedeploy}><RefreshCw className="size-3.5" />Redeploy</Button></div>
+    <div className="overflow-hidden rounded-xl border">
+      {loading ? <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading deployments…</div> : error ? <p role="alert" className="p-4 text-sm text-red-600 dark:text-red-400">{error}</p> : history.length ? history.map((item) => <div key={item.id} className="flex items-center gap-3 border-b p-3 last:border-b-0"><StatusBadge status={item.status} /><div className="min-w-0 flex-1"><p className="truncate font-mono text-xs">{item.commitSha.slice(0, 8)}</p><p className="truncate text-xs text-muted-foreground">{item.commitMessage}</p></div><time dateTime={item.startedAt} className="shrink-0 text-xs text-muted-foreground">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.startedAt))}</time></div>) : <p className="py-8 text-center text-sm text-muted-foreground">No deployments yet</p>}
+    </div>
+  </section>;
+}
+
+function ApplicationDomains({ application, initialDomains }: { application: Application; initialDomains: Domain[] }) {
+  const [domains, setDomains] = useState(initialDomains);
+  const [hostname, setHostname] = useState("");
+  const [publicNetwork, setPublicNetwork] = useState(initialDomains.length > 0);
+  const [savingDomain, setSavingDomain] = useState(false);
+  const [savingNetwork, setSavingNetwork] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const setNetworkAccess = async (checked: boolean) => {
+    const previous = publicNetwork;
+    setPublicNetwork(checked);
+    setSavingNetwork(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/domains", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ applicationId: application.id, publicNetwork: checked }) });
+      const body = await response.json() as { error?: { message?: string } };
+      if (!response.ok) throw new Error(body.error?.message ?? "Could not update network access");
+      toast.success(checked ? "Public network enabled" : "Application is now internal only");
+    } catch (networkError) {
+      setPublicNetwork(previous);
+      setError(networkError instanceof Error ? networkError.message : "Could not update network access");
+    } finally {
+      setSavingNetwork(false);
+    }
+  };
+
+  const addDomain = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedHostname = hostname.trim().toLowerCase();
+    if (!normalizedHostname) return;
+    setSavingDomain(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/domains", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ applicationId: application.id, hostname: normalizedHostname, isPrimary: domains.length === 0 }) });
+      const body = await response.json() as { data?: Domain; error?: { message?: string } };
+      if (!response.ok || !body.data) throw new Error(body.error?.message ?? "Could not add domain");
+      setDomains((current) => [...current, body.data!]);
+      setPublicNetwork(true);
+      setHostname("");
+      toast.success(`${normalizedHostname} added`);
+    } catch (domainError) {
+      setError(domainError instanceof Error ? domainError.message : "Could not add domain");
+    } finally {
+      setSavingDomain(false);
+    }
+  };
+
+  return <div className="space-y-4">
+    <div className="flex items-center justify-between gap-4 rounded-xl border p-4"><div><Label htmlFor="public-network">Public network</Label><p className="mt-1 text-xs text-muted-foreground">Expose this application through Traefik.</p></div><Switch id="public-network" checked={publicNetwork} disabled={savingNetwork} onCheckedChange={(checked) => void setNetworkAccess(checked)} /></div>
+    <form className="flex gap-2 rounded-xl border p-4" onSubmit={addDomain}><div className="min-w-0 flex-1 space-y-1.5"><Label htmlFor="custom-domain">Custom domain</Label><Input id="custom-domain" value={hostname} onChange={(event) => setHostname(event.target.value)} placeholder="app.example.com" inputMode="url" autoComplete="off" /></div><Button type="submit" className="self-end" disabled={savingDomain || !hostname.trim()}>{savingDomain ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}Add</Button></form>
+    {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+    {domains.length ? domains.map((domain) => <div key={domain.id} className="flex items-center gap-3 rounded-xl border p-3"><ExternalLink className="size-4 text-muted-foreground" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{domain.hostname}</p><p className="text-xs capitalize text-muted-foreground">SSL {domain.sslStatus}</p></div>{domain.isPrimary && <span className="text-xs text-muted-foreground">Primary</span>}</div>) : <p className="py-8 text-center text-sm text-muted-foreground">No domains configured for this resource.</p>}
+  </div>;
+}
+
+function ApplicationHealthCheck() {
+  const [path, setPath] = useState("/");
+  return <section className="space-y-3 rounded-xl border p-4">
+    <div><h3 className="font-medium">Health check</h3><p className="mt-1 text-xs text-muted-foreground">Override the global readiness endpoint for this application.</p></div>
+    <div className="flex gap-2"><div className="min-w-0 flex-1 space-y-1.5"><Label htmlFor="health-check-path">Path</Label><Input id="health-check-path" value={path} onChange={(event) => setPath(event.target.value)} placeholder="/health" /></div><Button type="button" variant="outline" className="self-end" disabled>Save</Button></div>
+    {/* TODO(BE): persist an application-level healthCheckPath override once the schema/API expose it. */}
+    <p className="text-xs text-amber-700 dark:text-amber-400">Backend support is pending. The global readiness path remains active.</p>
+  </section>;
+}
+
 function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, onDeploy, domains, deployments, logDeploymentId }: { nodeData: CanvasNodeData; activeTab: PanelTab; onTabChange: (tab: PanelTab) => void; onClose: () => void; onDeploy: () => void; domains: Domain[]; deployments: Deployment[]; logDeploymentId?: string }) {
   const [expanded, setExpanded] = useState(false);
   const app = nodeData.application;
@@ -233,13 +393,13 @@ function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, onDeploy,
       <DialogOverlay style={{ background: "rgba(0, 0, 0, 0.3)", backdropFilter: "none" }} className="duration-[120ms]" />
       <DialogPrimitive.Content aria-describedby={undefined} style={expanded ? { inset: 16, width: "auto", height: "auto", maxHeight: "none", animation: "none", transform: "none" } : { width: "min(720px, calc(100vw - 2rem))", maxHeight: "80vh", animationDuration: "120ms" }} className={cn("fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-foreground shadow-xl outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-black/50", !expanded && "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2") }>
         <header className="flex shrink-0 items-center gap-3 border-b p-4 pr-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-neutral-50 dark:bg-neutral-950"><BrandIcon name={nodeData.brand} officialColor className="size-5" /></span><div className="min-w-0 flex-1"><DialogTitle className="truncate text-base font-semibold">{nodeData.name}</DialogTitle><p className="text-xs capitalize text-muted-foreground">{nodeData.kind} configuration</p></div><StatusBadge status={nodeData.status} />{app && <Button size="sm" onClick={onDeploy}><Rocket className="size-3.5" />Deploy</Button>}<Button variant="ghost" size="icon-sm" onClick={() => setExpanded((value) => !value)}>{expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}<span className="sr-only">{expanded ? "Exit fullscreen" : "Expand dialog"}</span></Button><Button variant="ghost" size="icon-sm" onClick={onClose}><X className="size-4" /><span className="sr-only">Close configuration</span></Button></header>
-        <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as PanelTab)} className="min-h-0 flex-1 gap-0"><div className="shrink-0 border-b px-5"><TabsList variant="line" className="max-w-full overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="variables">Variables</TabsTrigger><TabsTrigger value="domains">Domains</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger><TabsTrigger value="settings">Settings</TabsTrigger></TabsList></div>
+        <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as PanelTab)} className="min-h-0 flex-1 gap-0"><div className="shrink-0 border-b px-5"><TabsList variant="line" className="grid w-full grid-cols-5"><TabsTrigger value="overview" className="min-w-0">Overview</TabsTrigger><TabsTrigger value="variables" className="min-w-0">Variables</TabsTrigger><TabsTrigger value="domains" className="min-w-0">Domains</TabsTrigger><TabsTrigger value="logs" className="min-w-0">Logs</TabsTrigger><TabsTrigger value="settings" className="min-w-0">Settings</TabsTrigger></TabsList></div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
-        <TabsContent value="overview" className="space-y-5"><div className="flex items-center justify-between rounded-xl border p-4"><span className="text-muted-foreground">Status</span><StatusBadge status={nodeData.status} /></div><dl className="grid gap-4 rounded-xl border p-4 text-sm">{[[app ? "Framework" : "Service", nodeData.brand], [app ? "Domain" : "Version", app ? nodeDomains.find((domain) => domain.isPrimary)?.hostname ?? "Not configured" : service?.version], ["Install", app?.installCommand ?? "Managed image"], ["Build", app?.buildCommand ?? "Not required"], ["Start", app?.startCommand ?? "Managed by Olym"]].map(([label, value]) => <div key={label} className="grid grid-cols-[90px_1fr] gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="truncate font-mono text-xs">{value}</dd></div>)}</dl></TabsContent>
-        <TabsContent value="variables" className="space-y-3">{["DATABASE_URL", "NODE_ENV", "SESSION_SECRET"].map((key) => <div key={key} className="rounded-xl border p-3"><Label className="text-xs">{key}</Label><p className="mt-1 font-mono text-xs text-muted-foreground">••••••••••••••••</p></div>)}</TabsContent>
-        <TabsContent value="domains" className="space-y-3">{nodeDomains.length ? nodeDomains.map((domain) => <div key={domain.id} className="flex items-center gap-3 rounded-xl border p-3"><ExternalLink className="size-4 text-muted-foreground" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{domain.hostname}</p><p className="text-xs capitalize text-muted-foreground">SSL {domain.sslStatus}</p></div>{domain.isPrimary && <span className="text-xs text-muted-foreground">Primary</span>}</div>) : <p className="py-10 text-center text-sm text-muted-foreground">No domains configured for this resource.</p>}</TabsContent>
+        <TabsContent value="overview" className="space-y-5"><div className="flex items-center justify-between rounded-xl border p-4"><span className="text-muted-foreground">Status</span><StatusBadge status={nodeData.status} /></div><dl className="grid gap-4 rounded-xl border p-4 text-sm">{[[app ? "Framework" : "Service", nodeData.brand], [app ? "Domain" : "Version", app ? nodeDomains.find((domain) => domain.isPrimary)?.hostname ?? "Not configured" : service?.version], ["Install", app?.installCommand ?? "Managed image"], ["Build", app?.buildCommand ?? "Not required"], ["Start", app?.startCommand ?? "Managed by Olym"]].map(([label, value]) => <div key={label} className="grid grid-cols-[90px_1fr] gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="truncate font-mono text-xs">{value}</dd></div>)}</dl>{app && <DeploymentHistory application={app} onRedeploy={onDeploy} />}</TabsContent>
+        <TabsContent value="variables">{app ? <ApplicationVariables application={app} /> : <p className="py-10 text-center text-sm text-muted-foreground">Variables are available for applications.</p>}</TabsContent>
+        <TabsContent value="domains">{app ? <ApplicationDomains application={app} initialDomains={nodeDomains} /> : <p className="py-10 text-center text-sm text-muted-foreground">Domains are available for applications.</p>}</TabsContent>
         <TabsContent value="logs"><LiveLogs key={logDeploymentId ?? deployment?.id ?? "no-deployment"} deploymentId={logDeploymentId ?? deployment?.id} deploymentStatus={deployment?.status} appUrl={appUrl} /></TabsContent>
-        <TabsContent value="settings"><div className="rounded-xl border border-red-200 p-4 dark:border-red-900"><div className="flex gap-3"><AlertTriangle className="size-4 text-red-600" /><div><h3 className="font-medium text-red-700 dark:text-red-400">Danger zone</h3><p className="mt-1 text-xs text-muted-foreground">Permanently remove this resource and its configuration.</p><Button variant="destructive" size="sm" className="mt-4"><Trash2 className="size-3.5" />Delete resource</Button></div></div></div></TabsContent>
+        <TabsContent value="settings" className="space-y-4">{app && <ApplicationHealthCheck />}<div className="rounded-xl border border-red-200 p-4 dark:border-red-900"><div className="flex gap-3"><AlertTriangle className="size-4 text-red-600" /><div><h3 className="font-medium text-red-700 dark:text-red-400">Danger zone</h3><p className="mt-1 text-xs text-muted-foreground">Permanently remove this resource and its configuration.</p><Button variant="destructive" size="sm" className="mt-4"><Trash2 className="size-3.5" />Delete resource</Button></div></div></div></TabsContent>
       </div>
     </Tabs>
       </DialogPrimitive.Content>
