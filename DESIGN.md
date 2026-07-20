@@ -105,3 +105,20 @@ O Sheet de borda de tela morre. Clicar num nó passa a funcionar como no Maestri
    - Nunca clipa, nunca cobre o nó de origem permanentemente (o canvas fica visível escurecido atrás; Esc fecha).
 2. **Pill de ações = toolbar do Maestri** (referência: pill escura arredondada com ícones separados por divisores): rounded-full, bg-neutral-900/90 no dark e bg-white/95 no light, ícones ghost com divisores verticais 1px, ação destrutiva separada no fim, badge numérico opcional (ex.: deployments ativos) em pill azul/ember.
 3. **Conexão pela BORDA do nó** (como Maestri): nó selecionado/hover mostra **borda tracejada** sutil; clicar+arrastar A PARTIR DA BORDA (faixa de 12px, cursor crosshair) puxa a linha de conexão; arrastar do miolo do card move o nó. Os handles invisíveis existem só na faixa de borda.
+
+---
+
+## v4 — Identidade própria: chrome flutuante estilo Maestri (decisão do fundador)
+
+Chega de parecer OpenShip. O produto adota a linguagem espacial do Maestri em TODO o app, não só no canvas:
+
+1. **Morre a sidebar clássica** de coluna cheia. No lugar:
+   - **Pill de logo** flutuante no canto superior esquerdo (logo + nome do produto + theme toggle), rounded-2xl, shadow suave.
+   - **Nav rail flutuante** vertical à esquerda (ícones com tooltip: Home, Projects, Deployments, Servers, Monitoring, Domains, Settings), pill arredondada solta (não encostada na borda), ativo com fundo suave.
+   - **CTA + New Project** vira botão flutuante compacto no rail (gradiente ember, só ícone + tooltip).
+   - Conta do usuário: avatar flutuante no canto inferior esquerdo com dropdown.
+2. **Fundo dot-grid sutil no app INTEIRO** (não só no canvas) — todas as páginas são "superfícies sobre o grid".
+3. **Todo conteúdo flutua**: páginas como Home/Projects/Monitoring viram grupos de cards soltos sobre o grid com sombras Maestri (shadow-sm/md, rounded-2xl), header da página como texto solto sem barra.
+4. **Header global some**: o ⌘K vira pill flutuante no canto superior direito.
+5. Light-first continua; dark ganha o clima do Maestri (fundo neutral-950, superfícies neutral-900, grid sutil).
+6. O canvas do projeto passa a ser **full-bleed** (a página inteira, sem card wrapper) — os controles já flutuam sobre ele.
