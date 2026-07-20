@@ -41,7 +41,7 @@ A partir do Sprint 4, o detalhe do projeto evolui para um **canvas estilo Railwa
 
 ### Identidade visual v2
 
-- Novo acento de marca: **ember** (laranja-fogo da forja, ~`#f54900`/orange-600) usado com extrema parcimônia: glow suave atrás de nós running, edges ativas, focus rings de momentos-chave. O CTA "+ New Project" migra do gradiente violeta para **gradiente ember→âmbar** (herdado da era Hefesto/forja; mantido como acento de marca do Olym).
+- Novo acento de marca: **ember** (laranja-fogo da forja, ~`#f54900`/orange-600) usado com extrema parcimônia: glow suave atrás de nós running, edges ativas, focus rings de momentos-chave. O CTA "+ New Project" migra do gradiente violeta para **gradiente ember→âmbar**, acento de marca do Olym.
 - **Glow de status**: nó running tem halo `shadow-[0_0_24px] shadow-emerald-500/15`; building, âmbar; failed, vermelho — sempre ≤15% de opacidade.
 - **Command palette ⌘K** (shadcn Command em Dialog): navegar para projetos/apps/páginas, ações rápidas (New Project, Deploy). Atalho visível no header.
 - Micro-interações: framer-motion apenas em drag do canvas, hover-lift de 1px em cards clicáveis e fade/slide de entrada de páginas (80ms, sutil).

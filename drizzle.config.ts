@@ -7,6 +7,6 @@ export default defineConfig({
   dbCredentials: {
     url:
       process.env.DATABASE_URL ??
-      "postgres://hefesto:hefesto@localhost:5432/hefesto",
+      "postgres://olym:olym@localhost:5432/olym",
   },
 });
