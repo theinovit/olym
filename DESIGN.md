@@ -66,3 +66,13 @@ O canvas deixa de ser uma view do projeto e vira **A interface do projeto**. Tud
 4. **Ligar nós arrastando** (handles do React Flow): app→service cria um **Binding** — visualmente a linha de pipa, semanticamente a injeção de credenciais (ex.: ligar app no postgres injeta DATABASE_URL no app; toast confirma). Desligar remove.
 5. As linhas de pipa são o grafo REAL de dependências, não decoração.
 6. Sidebar global encolhe em favor do canvas: Home, Projects (lista de canvases), Deployments, Infra, Settings continuam, mas o dia-a-dia é dentro do canvas.
+
+### v3.1 — Add Palette estilo Maestri (refinamento do fundador)
+
+O "+ Add" do canvas evolui de Dialog para **painel lateral esquerdo colapsável DENTRO do canvas** (referência: sidebar de workspaces do Maestri):
+
+- Painel ~280px ancorado à esquerda do canvas, **abre/fecha** com toggle (botão + flutuante e atalho `A`), animação slide suave (150ms). Fechado por padrão.
+- **Campo de busca no topo** (como o Filter do Maestri): filtra em tempo real a lista unificada de Applications (frameworks) e Services (catálogo da API), agrupados por seção, cada item com logo oficial + nome + descrição curta.
+- **Clicar OU arrastar** o item para dentro do canvas cria o nó (drag-and-drop do item direto na posição desejada; clique adiciona no centro visível).
+- O painel flutua SOBRE o canvas (overlay com borda/sombra sutil), não empurra o grafo.
+- Estética dos controles flutuantes do canvas (zoom, toggle do painel): pills arredondadas discretas, como a toolbar do Maestri — mas na nossa paleta light-first.
