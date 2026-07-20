@@ -68,6 +68,20 @@ Hoje toda Application exige `repoUrl` (clone → build via Dockerfile do repo). 
 - **API**: `POST /api/applications` aceita `{ repoUrl, branch }` OU `{ dockerImage }` — a validação de Git (`src/server/git.ts`) só roda quando `repoUrl` está presente.
 - **FE**: o fluxo de criação de Application (hoje o node nasce com `repoUrl: ""` fixo no Add Palette, depois configurado no painel do nó) precisa de uma escolha explícita **"Deploy from Git repository"** vs **"Deploy from Docker image"** — investigar o ponto certo de integração (Add Palette ao criar, ou tab Overview/Settings do painel do nó, que hoje não expõe edição de repo/branch ainda). Campos condicionais: Git mostra repo+branch; Imagem mostra `imagem:tag`.
 
+## Provisionamento real de serviços (Sprint 21)
+
+Achado ao investigar: hoje "adicionar um serviço" (Postgres, Redis, etc.) só insere uma linha em `service_instances` com `status: "stopped"` — `createService` (`src/server/services/services.ts`) nunca sobe um container de verdade. `bindings.ts` só guarda o NOME da env var que seria injetada (`injectedVarKey`, ex. `DATABASE_URL`), nunca um valor real. Ou seja: nenhum serviço one-click está de fato rodando nem tem credenciais reais — é só scaffolding de catálogo/canvas.
+
+Isso precisa virar real:
+
+1. **Provisionar de verdade**: ao criar (ou "deployar") um service instance, rodar via dockerode a imagem correta do template (`serviceTemplates` já tem nome/versão) na mesma rede Docker (`OLYM_DOCKER_NETWORK`) dos apps, com um nome de container previsível (ex. `olym-svc-<id curto>`). Gerar credenciais aleatórias no momento da criação: usuário/senha/nome do banco para Postgres/MySQL/Mongo, senha para Redis, access/secret key para MinIO — o gerador varia por categoria do template (`serviceCategoryEnum`).
+2. **Guardar credenciais com segurança**: nova tabela (ex. `service_credentials`: `serviceInstanceId`, `key`, `value`) com os valores **criptografados em repouso** (libsodium, já citado no backlog do BE) — nunca texto plano no banco. Ao ler para exibir/injetar, descriptografar em memória.
+3. **Atualizar status real**: `service_instances.status` passa a refletir o container de verdade (running/stopped/failed), não mais um valor estático.
+4. **Bindings passam a injetar valor real**: quando uma app se liga a um serviço, a env var (`injectedVarKey`) recebe a connection string real montada a partir do container name + porta + credenciais — hoje só a chave é registrada, o valor nunca existiu.
+5. **Expor a connection string na UI**: no painel do nó do serviço (Overview ou nova aba "Connect"), mostrar a connection string completa mascarada por padrão com botão de copiar/revelar (mesmo padrão de mascaramento já usado em Variables). Isso é o gap que motivou essa investigação: hoje não tem nenhuma forma de ver a credencial de um serviço.
+
+Sequenciar: item 1-3 são BE puro; item 4 depende de 1-3; item 5 é FE consumindo um novo endpoint (ex. `GET /api/service-instances/[id]/connection`).
+
 ## Regras para o squad
 
 1. Frontend não toca em `src/server` e `src/db`; Backend não toca em `src/app/(dashboard)` e `src/components` (exceto `src/app/api`). Contrato entre os dois: tipos em `src/lib/types.ts`.
