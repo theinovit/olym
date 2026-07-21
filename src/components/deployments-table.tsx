@@ -9,8 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { mockApplications } from "@/lib/mock-data";
-import type { Deployment, DeploymentStatus } from "@/lib/types";
+import type { Application, Deployment, DeploymentStatus } from "@/lib/types";
 
 function timeAgo(iso: string) {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
@@ -29,6 +28,7 @@ export function DeploymentsTable() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<DeploymentStatus | "all">("all");
   const [allDeployments, setAllDeployments] = useState<Deployment[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let cancelled = false;
@@ -41,11 +41,17 @@ export function DeploymentsTable() {
         if (!cancelled) setLoading(false);
       }
     };
+    fetch("/api/applications", { cache: "no-store" })
+      .then(async (response) => {
+        const body = await response.json() as { data?: Application[] };
+        if (!cancelled && response.ok) setApplications(body.data ?? []);
+      })
+      .catch(() => { if (!cancelled) setApplications([]); });
     void load();
     const timer = window.setInterval(load, 2000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
-  const appsById = new Map(mockApplications.map((app) => [app.id, app]));
+  const appsById = new Map(applications.map((app) => [app.id, app]));
   const normalizedQuery = query.trim().toLowerCase();
   const deployments = [...allDeployments]
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
