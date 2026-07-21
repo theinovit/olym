@@ -12,7 +12,7 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN pnpm build && pnpm build:worker
+RUN pnpm build && pnpm build:worker && pnpm build:migrate
 
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -26,6 +26,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/dist/worker.cjs ./worker.cjs
+COPY --from=builder --chown=nextjs:nodejs /app/dist/migrate.cjs ./migrate.cjs
+COPY --from=builder --chown=nextjs:nodejs /app/src/db/migrations ./src/db/migrations
 USER nextjs
 EXPOSE 3000
 CMD ["node", "server.js"]

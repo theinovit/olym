@@ -12,6 +12,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       socket-proxy:
@@ -46,6 +48,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       socket-proxy:
@@ -60,6 +64,18 @@ services:
       DEPLOY_READINESS_PATH: ${DEPLOY_READINESS_PATH:-/}
       DEPLOY_READINESS_TIMEOUT_MS: ${DEPLOY_READINESS_TIMEOUT_MS:-60000}
       DEPLOY_READINESS_INTERVAL_MS: ${DEPLOY_READINESS_INTERVAL_MS:-1000}
+    networks:
+      - olym
+
+  migrate:
+    image: ghcr.io/theinovit/olym:${OLYM_VERSION:-latest}
+    restart: "no"
+    command: ["node", "migrate.cjs"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://olym:${POSTGRES_PASSWORD}@postgres:5432/olym
     networks:
       - olym
 

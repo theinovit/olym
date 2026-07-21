@@ -1,10 +1,12 @@
 {
   "name": "olym",
   "version": "0.1.0",
+  "packageManager": "pnpm@9.15.4",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:migrate": "esbuild src/server/migrate.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/migrate.cjs --external:pg-native --external:cpu-features",
     "build:worker": "esbuild src/server/worker.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/worker.cjs --external:pg-native --external:cpu-features",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
@@ -54,5 +56,16 @@
     "tailwindcss": "^4",
     "tsx": "^4.20.3",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "ssh2",
+      "cpu-features",
+      "msgpackr-extract",
+      "protobufjs",
+      "unrs-resolver"
+    ]
   }
 }
