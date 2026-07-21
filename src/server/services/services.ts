@@ -32,21 +32,51 @@ const simulatedServices: CanvasService[] = mockServiceInstances.map((item, index
 
 export async function listServices(): Promise<ServiceInstance[]> {
   if (!isDatabaseEnabled()) return simulatedServices;
-  const rows = await getDb().select().from(schema.serviceInstances).orderBy(asc(schema.serviceInstances.createdAt));
-  return Promise.all(rows.map(syncServiceStatus));
+  const rows = await getDb()
+    .select({
+      service: schema.serviceInstances,
+      templateName: schema.serviceTemplates.name,
+    })
+    .from(schema.serviceInstances)
+    .innerJoin(
+      schema.serviceTemplates,
+      eq(schema.serviceInstances.templateId, schema.serviceTemplates.id),
+    )
+    .orderBy(asc(schema.serviceInstances.createdAt));
+  return Promise.all(
+    rows.map(({ service, templateName }) =>
+      syncServiceStatus({ ...service, templateName }),
+    ),
+  );
 }
 
 export async function getService(id: string): Promise<ServiceInstance | null> {
   if (!isDatabaseEnabled()) {
     return simulatedServices.find((service) => service.id === id) ?? null;
   }
-  const [row] = await getDb().select().from(schema.serviceInstances).where(eq(schema.serviceInstances.id, id)).limit(1);
-  return row ? syncServiceStatus(row) : null;
+  const [row] = await getDb()
+    .select({
+      service: schema.serviceInstances,
+      templateName: schema.serviceTemplates.name,
+    })
+    .from(schema.serviceInstances)
+    .innerJoin(
+      schema.serviceTemplates,
+      eq(schema.serviceInstances.templateId, schema.serviceTemplates.id),
+    )
+    .where(eq(schema.serviceInstances.id, id))
+    .limit(1);
+  return row
+    ? syncServiceStatus({ ...row.service, templateName: row.templateName })
+    : null;
 }
 
 type ServiceRow = typeof schema.serviceInstances.$inferSelect;
+type ServiceRowWithTemplate = ServiceRow & { templateName: string };
 
-async function syncServiceStatus(row: ServiceRow): Promise<ServiceInstance> {
+async function syncServiceStatus(
+  row: ServiceRowWithTemplate,
+): Promise<ServiceInstance> {
   let status = row.status;
   try {
     const inspection = await createDockerClient()
@@ -79,9 +109,13 @@ export async function createService(
   input: CreateServiceInput,
 ): Promise<ServiceInstance> {
   if (!isDatabaseEnabled()) {
+    const templateName =
+      serviceCatalog.find((template) => template.id === input.templateId)
+        ?.name ?? input.templateId;
     const service: CanvasService = {
       id: randomUUID(),
       ...input,
+      templateName,
       status: "stopped",
       canvasX: null,
       canvasY: null,
@@ -165,7 +199,10 @@ export async function createService(
       .set({ status: "running" })
       .where(eq(schema.serviceInstances.id, row.id))
       .returning();
-    return serializeDates<ServiceInstance>(running);
+    return serializeDates<ServiceInstance>({
+      ...running,
+      templateName: template.name,
+    });
   } catch (error) {
     await getDb()
       .update(schema.serviceInstances)
