@@ -577,14 +577,38 @@ export function ProjectCanvas({ project, environment, applications, services, te
     setEdges((current) => [...current, { ...connection, id: `binding_${Date.now()}`, type: "kite", data: { injectedVarKey: key } } as Edge]);
     toast.success(`${key} injected into ${source.data.name}`);
   };
-  const addResource = (item: PaletteItem, position?: { x: number; y: number }) => {
+  const addResource = async (item: PaletteItem, position?: { x: number; y: number }) => {
     const { kind } = item;
-    const id = `${kind}_${Date.now()}`;
-    const app = kind === "application" ? { id, projectId: project.id, environment, name: `${project.slug}-${item.id}`, framework: item.id as Framework, repoUrl: "", branch: "main", installCommand: "pnpm install", buildCommand: "pnpm build", startCommand: "pnpm start", outputDirectory: null, port: 3000, status: "stopped" as const, createdAt: new Date().toISOString() } : undefined;
+    const source = kind === "application" ? window.prompt("Git repository URL or Docker image", "https://github.com/")?.trim() : undefined;
+    if (kind === "application" && !source) return;
+    const isGitSource = source ? /^https?:\/\//i.test(source) : false;
+    const branch = isGitSource ? window.prompt("Git branch", "main")?.trim() : undefined;
+    if (isGitSource && !branch) return;
+    const temporaryId = `creating_${kind}_${Date.now()}`;
+    const resourceName = `${project.slug}-${item.id}`;
     const template = kind === "service" ? templates.find((entry) => entry.id === item.id) ?? { id: item.id, name: item.name, description: "Managed service", category: "database" as const, defaultVersion: item.version ?? "latest" } : undefined;
-    const service = kind === "service" ? { id, projectId: project.id, environment, templateId: item.id, name: `${project.slug}-${item.id}`, version: item.version ?? "latest", status: "building" as const, createdAt: new Date().toISOString() } : undefined;
-    setNodes((current) => [...current, { id, type: "resource", position: position ?? { x: 180 + (current.length % 3) * 280, y: 150 + Math.floor(current.length / 3) * 230 }, data: { kind, name: app?.name ?? service!.name, status: app?.status ?? service!.status, detail: app ? item.name : `${item.name} ${item.version ?? "latest"}`, brand: item.id, application: app, service, template } }]);
-    toast.success(`${item.name} added to the canvas`);
+    const nodePosition = position ?? { x: 180 + (nodes.length % 3) * 280, y: 150 + Math.floor(nodes.length / 3) * 230 };
+    setNodes((current) => [...current, { id: temporaryId, type: "resource", position: nodePosition, data: { kind, name: resourceName, status: "building", detail: kind === "application" ? item.name : `${item.name} ${item.version ?? "latest"}`, brand: item.id, template } }]);
+    try {
+      const endpoint = kind === "application" ? "/api/applications" : "/api/service-instances";
+      const payload = kind === "application"
+        ? { projectId: project.id, environment, name: resourceName, framework: item.id, ...(isGitSource ? { repoUrl: source, branch } : { dockerImage: source }) }
+        : { projectId: project.id, environment, templateId: item.id, name: resourceName, version: item.version ?? template?.defaultVersion ?? "latest" };
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const body = await response.json() as { data?: Application | ServiceInstance; error?: { message?: string } };
+      if (!response.ok || !body.data) throw new Error(body.error?.message ?? `Could not create ${kind}`);
+      if (kind === "application") {
+        const application = body.data as Application;
+        setNodes((current) => current.map((node) => node.id === temporaryId ? { ...node, id: application.id, data: { ...node.data, name: application.name, status: application.status, application } } : node));
+      } else {
+        const service = body.data as ServiceInstance;
+        setNodes((current) => current.map((node) => node.id === temporaryId ? { ...node, id: service.id, data: { ...node.data, name: service.name, status: service.status, service } } : node));
+      }
+      toast.success(`${item.name} added to the canvas`);
+    } catch (error) {
+      setNodes((current) => current.filter((node) => node.id !== temporaryId));
+      toast.error(error instanceof Error ? error.message : `Could not create ${kind}`);
+    }
   };
 
   return <>
