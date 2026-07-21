@@ -7,7 +7,7 @@ import {
   type Node, type NodeMouseHandler, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { AlertTriangle, Check, ExternalLink, FileText, GitFork, LoaderCircle, Maximize2, Minimize2, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Copy, Eye, EyeOff, ExternalLink, FileText, GitFork, LoaderCircle, Maximize2, Minimize2, PackageOpen, Plus, RefreshCw, Rocket, Search, Settings, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { BrandIcon } from "@/components/brand-icon";
@@ -35,7 +35,7 @@ type CanvasNodeData = {
   template?: ServiceTemplate;
 };
 type CanvasNode = Node<CanvasNodeData, "resource">;
-type PanelTab = "overview" | "variables" | "domains" | "logs" | "settings";
+type PanelTab = "overview" | "connect" | "variables" | "domains" | "logs" | "settings";
 type NodeActionContextValue = {
   selectedNodeId: string | null;
   connectionFocusNodeId: string | null;
@@ -381,6 +381,40 @@ function ApplicationHealthCheck() {
   </section>;
 }
 
+function ServiceConnection({ service }: { service: ServiceInstance }) {
+  const [connectionString, setConnectionString] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/service-instances/${encodeURIComponent(service.id)}/connection`, { cache: "no-store" })
+      .then(async (response) => {
+        const body = await response.json() as { data?: { connectionString: string }; error?: { message?: string } };
+        if (!response.ok || !body.data?.connectionString) throw new Error(body.error?.message ?? "Could not load connection string");
+        if (!cancelled) setConnectionString(body.data.connectionString);
+      })
+      .catch((loadError: unknown) => { if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load connection string"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [service.id]);
+
+  const copyConnection = async () => {
+    if (!connectionString) return;
+    try {
+      await navigator.clipboard.writeText(connectionString);
+      toast.success("Connection string copied");
+    } catch {
+      toast.error("Could not copy connection string");
+    }
+  };
+
+  if (loading) return <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading connection…</div>;
+  if (error || !connectionString) return <p role="alert" className="py-10 text-center text-sm text-red-600 dark:text-red-400">{error ?? "Connection string unavailable"}</p>;
+  return <section className="space-y-3"><div><h3 className="font-medium">Connection string</h3><p className="mt-1 text-xs text-muted-foreground">Use this value to connect applications to {service.name}.</p></div><div className="flex items-center gap-2 rounded-xl border bg-muted/30 p-3"><code className="min-w-0 flex-1 truncate text-xs">{revealed ? connectionString : "••••••••••••••••••••••••••••••••"}</code><Button type="button" variant="ghost" size="icon-sm" onClick={() => setRevealed((current) => !current)}>{revealed ? <EyeOff className="size-4" /> : <Eye className="size-4" />}<span className="sr-only">{revealed ? "Hide" : "Reveal"} connection string</span></Button><Button type="button" variant="ghost" size="icon-sm" onClick={() => void copyConnection()}><Copy className="size-4" /><span className="sr-only">Copy connection string</span></Button></div></section>;
+}
+
 function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, onDeploy, domains, deployments, logDeploymentId }: { nodeData: CanvasNodeData; activeTab: PanelTab; onTabChange: (tab: PanelTab) => void; onClose: () => void; onDeploy: () => void; domains: Domain[]; deployments: Deployment[]; logDeploymentId?: string }) {
   const [expanded, setExpanded] = useState(false);
   const app = nodeData.application;
@@ -393,9 +427,10 @@ function NodeConfigDialog({ nodeData, activeTab, onTabChange, onClose, onDeploy,
       <DialogOverlay style={{ background: "rgba(0, 0, 0, 0.3)", backdropFilter: "none" }} className="duration-[120ms]" />
       <DialogPrimitive.Content aria-describedby={undefined} style={expanded ? { inset: 16, width: "auto", height: "auto", maxHeight: "none", animation: "none", transform: "none" } : { width: "min(720px, calc(100vw - 2rem))", maxHeight: "80vh", animationDuration: "120ms" }} className={cn("fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-foreground shadow-xl outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-black/50", !expanded && "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2") }>
         <header className="flex shrink-0 items-center gap-3 border-b p-4 pr-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-neutral-50 dark:bg-neutral-950"><BrandIcon name={nodeData.brand} officialColor className="size-5" /></span><div className="min-w-0 flex-1"><DialogTitle className="truncate text-base font-semibold">{nodeData.name}</DialogTitle><p className="text-xs capitalize text-muted-foreground">{nodeData.kind} configuration</p></div><StatusBadge status={nodeData.status} />{app && <Button size="sm" onClick={onDeploy}><Rocket className="size-3.5" />Deploy</Button>}<Button variant="ghost" size="icon-sm" onClick={() => setExpanded((value) => !value)}>{expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}<span className="sr-only">{expanded ? "Exit fullscreen" : "Expand dialog"}</span></Button><Button variant="ghost" size="icon-sm" onClick={onClose}><X className="size-4" /><span className="sr-only">Close configuration</span></Button></header>
-        <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as PanelTab)} className="min-h-0 flex-1 gap-0"><div className="shrink-0 border-b px-5"><TabsList variant="line" className="grid w-full grid-cols-5"><TabsTrigger value="overview" className="min-w-0">Overview</TabsTrigger><TabsTrigger value="variables" className="min-w-0">Variables</TabsTrigger><TabsTrigger value="domains" className="min-w-0">Domains</TabsTrigger><TabsTrigger value="logs" className="min-w-0">Logs</TabsTrigger><TabsTrigger value="settings" className="min-w-0">Settings</TabsTrigger></TabsList></div>
+        <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as PanelTab)} className="min-h-0 flex-1 gap-0"><div className="shrink-0 border-b px-5"><TabsList variant="line" className={cn("grid w-full", service ? "grid-cols-6" : "grid-cols-5")}><TabsTrigger value="overview" className="min-w-0">Overview</TabsTrigger>{service && <TabsTrigger value="connect" className="min-w-0">Connect</TabsTrigger>}<TabsTrigger value="variables" className="min-w-0">Variables</TabsTrigger><TabsTrigger value="domains" className="min-w-0">Domains</TabsTrigger><TabsTrigger value="logs" className="min-w-0">Logs</TabsTrigger><TabsTrigger value="settings" className="min-w-0">Settings</TabsTrigger></TabsList></div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
         <TabsContent value="overview" className="space-y-5"><div className="flex items-center justify-between rounded-xl border p-4"><span className="text-muted-foreground">Status</span><StatusBadge status={nodeData.status} /></div><dl className="grid gap-4 rounded-xl border p-4 text-sm">{[[app ? "Framework" : "Service", nodeData.brand], [app ? "Domain" : "Version", app ? nodeDomains.find((domain) => domain.isPrimary)?.hostname ?? "Not configured" : service?.version], ["Install", app?.installCommand ?? "Managed image"], ["Build", app?.buildCommand ?? "Not required"], ["Start", app?.startCommand ?? "Managed by Olym"]].map(([label, value]) => <div key={label} className="grid grid-cols-[90px_1fr] gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="truncate font-mono text-xs">{value}</dd></div>)}</dl>{app && <DeploymentHistory application={app} onRedeploy={onDeploy} />}</TabsContent>
+        <TabsContent value="connect">{service && <ServiceConnection service={service} />}</TabsContent>
         <TabsContent value="variables">{app ? <ApplicationVariables application={app} /> : <p className="py-10 text-center text-sm text-muted-foreground">Variables are available for applications.</p>}</TabsContent>
         <TabsContent value="domains">{app ? <ApplicationDomains application={app} initialDomains={nodeDomains} /> : <p className="py-10 text-center text-sm text-muted-foreground">Domains are available for applications.</p>}</TabsContent>
         <TabsContent value="logs"><LiveLogs key={logDeploymentId ?? deployment?.id ?? "no-deployment"} deploymentId={logDeploymentId ?? deployment?.id} deploymentStatus={deployment?.status} appUrl={appUrl} /></TabsContent>
