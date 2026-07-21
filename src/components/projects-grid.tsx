@@ -9,17 +9,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { MOCK_NOW, mockApplications, mockDeployments } from "@/lib/mock-data";
-import type { AppStatus, Project } from "@/lib/types";
+import type { Application, AppStatus, Deployment, Project } from "@/lib/types";
 
 function timeAgo(iso: string) {
-  const minutes = Math.max(0, Math.floor((new Date(MOCK_NOW).getTime() - new Date(iso).getTime()) / 60000));
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
   if (minutes < 60) return `${minutes}m ago`;
   if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
   return `${Math.floor(minutes / 1440)}d ago`;
 }
 
 function aggregateStatus(statuses: AppStatus[]): AppStatus {
+  if (!statuses.length) return "stopped";
   if (statuses.includes("failed")) return "failed";
   if (statuses.includes("building")) return "building";
   if (statuses.includes("stopped")) return "stopped";
@@ -29,15 +29,21 @@ function aggregateStatus(statuses: AppStatus[]): AppStatus {
 export function ProjectsGrid() {
   const [query, setQuery] = useState("");
   const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/projects", { cache: "no-store" })
-      .then(async (response) => {
-        const body = await response.json() as { data?: Project[]; error?: { message?: string } };
-        if (!response.ok) throw new Error(body.error?.message ?? "Could not load projects");
-        if (!cancelled) setAllProjects(body.data ?? []);
+    Promise.all([fetch("/api/projects", { cache: "no-store" }), fetch("/api/applications", { cache: "no-store" }), fetch("/api/deployments", { cache: "no-store" })])
+      .then(async ([projectsResponse, applicationsResponse, deploymentsResponse]) => {
+        const projectsBody = await projectsResponse.json() as { data?: Project[]; error?: { message?: string } };
+        const applicationsBody = await applicationsResponse.json() as { data?: Application[]; error?: { message?: string } };
+        const deploymentsBody = await deploymentsResponse.json() as { data?: Deployment[]; error?: { message?: string } };
+        if (!projectsResponse.ok) throw new Error(projectsBody.error?.message ?? "Could not load projects");
+        if (!applicationsResponse.ok) throw new Error(applicationsBody.error?.message ?? "Could not load applications");
+        if (!deploymentsResponse.ok) throw new Error(deploymentsBody.error?.message ?? "Could not load deployments");
+        if (!cancelled) { setAllProjects(projectsBody.data ?? []); setApplications(applicationsBody.data ?? []); setDeployments(deploymentsBody.data ?? []); }
       })
       .catch((loadError: unknown) => { if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load projects"); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -69,9 +75,9 @@ export function ProjectsGrid() {
       {loading ? <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed bg-card py-16 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading projects…</div> : error ? <div role="alert" className="rounded-xl border border-red-200 bg-card py-16 text-center text-sm text-red-600 dark:border-red-900 dark:text-red-400">{error}</div> : projects.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects.map((project) => {
-            const apps = mockApplications.filter((app) => app.projectId === project.id);
+            const apps = applications.filter((app) => app.projectId === project.id);
             const appIds = new Set(apps.map((app) => app.id));
-            const latestDeploy = mockDeployments.filter((deployment) => appIds.has(deployment.applicationId)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+            const latestDeploy = deployments.filter((deployment) => appIds.has(deployment.applicationId)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
             const environments = [...new Set(apps.map((app) => app.environment))];
             return (
               <Card key={project.id} className="relative [--card-spacing:--spacing(5)] transition-colors hover:ring-foreground/20">
