@@ -3,7 +3,7 @@
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Background, BackgroundVariant, Controls, Handle, NodeToolbar, Position, ReactFlow,
-  useEdgesState, useInternalNode, useNodesState, useViewport, type Connection, type Edge, type EdgeProps,
+  useEdgesState, useInternalNode, useNodesState, useViewport, type Connection, type Edge, type EdgeChange, type EdgeProps,
   type Node, type NodeMouseHandler, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
 import { Dialog as DialogPrimitive } from "radix-ui";
@@ -167,15 +167,6 @@ const KiteEdge = memo(function KiteEdge({ id, source, target, markerEnd, style, 
 
 const nodeTypes = { resource: ResourceNode };
 const edgeTypes = { kite: KiteEdge };
-
-function injectedKey(template?: ServiceTemplate) {
-  const name = template?.name.toLowerCase() ?? "service";
-  if (name.includes("redis")) return "REDIS_URL";
-  if (name.includes("minio")) return "S3_ENDPOINT";
-  if (name.includes("rabbit")) return "AMQP_URL";
-  if (template?.category === "search") return "SEARCH_URL";
-  return "DATABASE_URL";
-}
 
 const deployStages = [
   { label: "Building application...", completePattern: /build completed|image created|building docker image/i },
@@ -466,7 +457,7 @@ export function ProjectCanvas({ project, environment, applications, services, te
   const initialNodes = useMemo<CanvasNode[]>(() => [...applications.map((app, index) => ({ id: app.id, type: "resource" as const, position: { x: 80 + index * 300, y: 55 }, data: { kind: "application" as const, name: app.name, status: app.status, detail: domains.find((domain) => domain.applicationId === app.id && domain.isPrimary)?.hostname ?? app.framework, brand: app.framework, application: app } })), ...services.map((service, index) => { const template = templates.find((item) => item.name === service.templateName); return { id: service.id, type: "resource" as const, position: { x: 150 + index * 300, y: 340 }, data: { kind: "service" as const, name: service.name, status: service.status, detail: `${template?.name ?? "Service"} ${service.version}`, brand: template?.id ?? service.templateId, service, template } }; })], [applications, domains, services, templates]);
   const initialEdges = useMemo<Edge[]>(() => bindings.filter((binding) => applications.some((app) => app.id === binding.applicationId) && services.some((service) => service.id === binding.serviceInstanceId)).map((binding) => ({ id: binding.id, source: binding.applicationId, target: binding.serviceInstanceId, type: "kite", data: { active: activeApplicationIds.includes(binding.applicationId), injectedVarKey: binding.injectedVarKey } })), [activeApplicationIds, applications, bindings, services]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [edges, setEdges, applyEdgeChanges] = useEdgesState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [connectionFocusNodeId, setConnectionFocusNodeId] = useState<string | null>(null);
   const [configNodeId, setConfigNodeId] = useState<string | null>(null);
@@ -474,6 +465,7 @@ export function ProjectCanvas({ project, environment, applications, services, te
   const [runtimeDeployments, setRuntimeDeployments] = useState<Deployment[]>([]);
   const [logDeploymentByApp, setLogDeploymentByApp] = useState<Record<string, string>>({});
   const flowRef = useRef<ReactFlowInstance<CanvasNode, Edge> | null>(null);
+  const deletingEdgeIdsRef = useRef(new Set<string>());
   const selectedNode = nodes.find((node) => node.id === configNodeId) ?? null;
   const allDeployments = useMemo(() => {
     const runtimeIds = new Set(runtimeDeployments.map((deployment) => deployment.id));
@@ -603,14 +595,45 @@ export function ProjectCanvas({ project, environment, applications, services, te
     restart: (nodeId) => toast.success(`Restart queued for ${nodes.find((node) => node.id === nodeId)?.data.name ?? "resource"}`),
     remove: removeNode,
   };
-  const onConnect = (connection: Connection) => {
+  const onEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
+    const localChanges = changes.filter((change) => change.type !== "remove");
+    if (localChanges.length) applyEdgeChanges(localChanges);
+
+    for (const change of changes) {
+      if (change.type !== "remove" || deletingEdgeIdsRef.current.has(change.id)) continue;
+      deletingEdgeIdsRef.current.add(change.id);
+      void (async () => {
+        try {
+          const response = await fetch(`/api/bindings?id=${encodeURIComponent(change.id)}`, { method: "DELETE" });
+          if (!response.ok) {
+            const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+            throw new Error(body?.error?.message ?? "Could not remove connection");
+          }
+          applyEdgeChanges([change]);
+          toast.success("Connection removed");
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Could not remove connection");
+        } finally {
+          deletingEdgeIdsRef.current.delete(change.id);
+        }
+      })();
+    }
+  }, [applyEdgeChanges]);
+  const onConnect = async (connection: Connection) => {
     const source = nodes.find((node) => node.id === connection.source);
     const target = nodes.find((node) => node.id === connection.target);
     if (!source || !target || source.data.kind !== "application" || target.data.kind !== "service") { toast.error("Connect an application to a service"); return; }
     if (edges.some((edge) => edge.source === source.id && edge.target === target.id)) { toast.error("These resources are already connected"); return; }
-    const key = injectedKey(target.data.template);
-    setEdges((current) => [...current, { ...connection, id: `binding_${Date.now()}`, type: "kite", data: { injectedVarKey: key } } as Edge]);
-    toast.success(`${key} injected into ${source.data.name}`);
+    try {
+      const response = await fetch("/api/bindings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ applicationId: source.id, serviceInstanceId: target.id }) });
+      const body = await response.json().catch(() => null) as { data?: Binding; error?: { message?: string } } | null;
+      if (!response.ok || !body?.data) throw new Error(body?.error?.message ?? "Could not create connection");
+      const binding = body.data;
+      setEdges((current) => [...current, { ...connection, id: binding.id, type: "kite", data: { injectedVarKey: binding.injectedVarKey } } as Edge]);
+      toast.success(`${binding.injectedVarKey} injected into ${source.data.name}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create connection");
+    }
   };
   const addResource = async (item: PaletteItem, position?: { x: number; y: number }) => {
     const { kind } = item;
