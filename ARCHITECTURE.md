@@ -82,6 +82,19 @@ Isso precisa virar real:
 
 Sequenciar: item 1-3 são BE puro; item 4 depende de 1-3; item 5 é FE consumindo um novo endpoint (ex. `GET /api/service-instances/[id]/connection`).
 
+## Bug crítico: Projects nunca conectado à API real (achado testando a UI)
+
+Testando o produto de ponta a ponta (criar serviço via canvas): `addResource` foi corrigido pra chamar a API real, mas continuou falhando — causa raiz é mais funda.
+
+- `src/app/(dashboard)/projects/page.tsx` → `ProjectsGrid` usa `mockProjects` importado direto de `@/lib/mock-data`, nunca chama `GET /api/projects` (que já existe e funciona).
+- `src/app/(dashboard)/projects/[slug]/page.tsx` também usa `mockProjects.find(...)`, nunca busca do banco real. `generateStaticParams` gera as rotas estáticas a partir do mock.
+- Resultado: o `project` passado pro canvas tem um `id` FAKE (não é UUID), então qualquer `POST` que referencia `projectId` (aplicações, serviços) falha com erro de tipo no Postgres (`invalid input syntax for type uuid`).
+- `POST /api/projects` (criar projeto) tem um bug à parte: o route handler (`src/app/api/projects/route.ts`) está **hardcoded pra sempre retornar 501 Not Implemented**, mesmo a função de serviço `createProject()` (`src/server/services/projects.ts`) já tendo a query real do Drizzle implementada e funcional — o route handler simplesmente nunca chama a função.
+
+Correções:
+1. **BE**: `POST /api/projects` — trocar o `return errorResponse(501, ...)` hardcoded por uma chamada real a `createProject(result.data)` + `dataResponse(project, { status: 201 })`.
+2. **FE**: `/projects` (lista) busca de `GET /api/projects` em vez de `mockProjects`. `/projects/[slug]` busca a lista real e filtra por slug (não existe endpoint por slug ainda, reusar a lista) — remover/ajustar `generateStaticParams` já que projetos passam a ser dinâmicos, não estáticos. Fluxo de "New Project" passa a chamar o `POST /api/projects` (agora real).
+
 ## Regras para o squad
 
 1. Frontend não toca em `src/server` e `src/db`; Backend não toca em `src/app/(dashboard)` e `src/components` (exceto `src/app/api`). Contrato entre os dois: tipos em `src/lib/types.ts`.
