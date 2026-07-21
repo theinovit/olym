@@ -6,7 +6,7 @@ import { Activity, FolderKanban, Globe, House, Plus, Rocket, Search, Server, Set
 
 import { Button } from "@/components/ui/button";
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from "@/components/ui/command";
-import { mockProjects } from "@/lib/mock-data";
+import type { Project } from "@/lib/types";
 
 const pages = [
   { label: "Home", href: "/home", icon: House },
@@ -20,6 +20,7 @@ const pages = [
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -31,6 +32,17 @@ export function CommandPalette() {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/projects", { cache: "no-store" })
+      .then(async (response) => {
+        const body = await response.json() as { data?: Project[] };
+        if (!cancelled && response.ok) setProjects(body.data ?? []);
+      })
+      .catch(() => { if (!cancelled) setProjects([]); });
+    return () => { cancelled = true; };
   }, []);
 
   const go = (href: string) => {
@@ -57,7 +69,7 @@ export function CommandPalette() {
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Projects">
-              {mockProjects.map((project) => <CommandItem key={project.id} value={`${project.name} ${project.description ?? ""}`} onSelect={() => go(`/projects/${project.slug}`)}><FolderKanban />{project.name}</CommandItem>)}
+              {projects.map((project) => <CommandItem key={project.id} value={`${project.name} ${project.description ?? ""}`} onSelect={() => go(`/projects/${project.slug}`)}><FolderKanban />{project.name}</CommandItem>)}
             </CommandGroup>
           </CommandList>
         </Command>
