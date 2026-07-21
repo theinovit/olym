@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { ArrowUpRight, Boxes, Clock3, Plus, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpRight, Boxes, Clock3, LoaderCircle, Plus, Search } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { MOCK_NOW, mockApplications, mockDeployments, mockProjects } from "@/lib/mock-data";
-import type { AppStatus } from "@/lib/types";
+import { MOCK_NOW, mockApplications, mockDeployments } from "@/lib/mock-data";
+import type { AppStatus, Project } from "@/lib/types";
 
 function timeAgo(iso: string) {
   const minutes = Math.max(0, Math.floor((new Date(MOCK_NOW).getTime() - new Date(iso).getTime()) / 60000));
@@ -28,8 +28,23 @@ function aggregateStatus(statuses: AppStatus[]): AppStatus {
 
 export function ProjectsGrid() {
   const [query, setQuery] = useState("");
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/projects", { cache: "no-store" })
+      .then(async (response) => {
+        const body = await response.json() as { data?: Project[]; error?: { message?: string } };
+        if (!response.ok) throw new Error(body.error?.message ?? "Could not load projects");
+        if (!cancelled) setAllProjects(body.data ?? []);
+      })
+      .catch((loadError: unknown) => { if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load projects"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
   const normalizedQuery = query.trim().toLowerCase();
-  const projects = mockProjects.filter((project) =>
+  const projects = allProjects.filter((project) =>
     [project.name, project.description ?? ""].some((value) => value.toLowerCase().includes(normalizedQuery))
   );
 
@@ -51,7 +66,7 @@ export function ProjectsGrid() {
         </div>
       </div>
 
-      {projects.length ? (
+      {loading ? <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed bg-card py-16 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading projects…</div> : error ? <div role="alert" className="rounded-xl border border-red-200 bg-card py-16 text-center text-sm text-red-600 dark:border-red-900 dark:text-red-400">{error}</div> : projects.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects.map((project) => {
             const apps = mockApplications.filter((app) => app.projectId === project.id);
