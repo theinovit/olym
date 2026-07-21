@@ -92,8 +92,34 @@ Testando o produto de ponta a ponta (criar serviço via canvas): `addResource` f
 - `POST /api/projects` (criar projeto) tem um bug à parte: o route handler (`src/app/api/projects/route.ts`) está **hardcoded pra sempre retornar 501 Not Implemented**, mesmo a função de serviço `createProject()` (`src/server/services/projects.ts`) já tendo a query real do Drizzle implementada e funcional — o route handler simplesmente nunca chama a função.
 
 Correções:
-1. **BE**: `POST /api/projects` — trocar o `return errorResponse(501, ...)` hardcoded por uma chamada real a `createProject(result.data)` + `dataResponse(project, { status: 201 })`.
-2. **FE**: `/projects` (lista) busca de `GET /api/projects` em vez de `mockProjects`. `/projects/[slug]` busca a lista real e filtra por slug (não existe endpoint por slug ainda, reusar a lista) — remover/ajustar `generateStaticParams` já que projetos passam a ser dinâmicos, não estáticos. Fluxo de "New Project" passa a chamar o `POST /api/projects` (agora real).
+1. **BE**: `POST /api/projects` — trocar o `return errorResponse(501, ...)` hardcoded por uma chamada real a `createProject(result.data)` + `dataResponse(project, { status: 201 })`. ✅ (commit `15f6946`)
+2. **FE**: `/projects` (lista) busca de `GET /api/projects` em vez de `mockProjects`. `/projects/[slug]` busca a lista real e filtra por slug (não existe endpoint por slug ainda, reusar a lista) — remover/ajustar `generateStaticParams` já que projetos passam a ser dinâmicos, não estáticos. Fluxo de "New Project" passa a chamar o `POST /api/projects` (agora real). ✅ (commits `01e5e24`, `014fc35`, `f1c0159`)
+
+Validado ao vivo no browser: criar um serviço Redis no canvas de `acme-storefront` agora funciona ponta a ponta (POST real → container Docker real → status `Running`) e a connection string aparece numa aba "Connect" no painel do nó. ✅ (commit `5d0e857`, consumindo o endpoint do Sprint 21 item 5)
+
+## Bug crítico #2: canvas do projeto (`ProjectDetail`) inteiro ainda é mock
+
+Achado testando o mesmo fluxo: dar refresh na página `/projects/acme-storefront` depois de criar o serviço Redis faz o node desaparecer. Causa raiz: `src/components/project-detail.tsx` nunca foi corrigido — só a página wrapper (`page.tsx`) e a lista (`projects-grid.tsx`) foram. `ProjectDetail` ainda importa `mockApplications`, `mockServiceInstances`, `mockDomains`, `mockDeployments`, `mockBindings`, `mockServiceTemplates` de `@/lib/mock-data` e filtra por `project.id` — como `project.id` agora é um UUID real, os filtros de mock (que usam ids fake tipo `proj_01`) sempre retornam array vazio. Ou seja: **toda criação de recurso funciona e persiste no banco, mas nada é lido de volta** — o canvas nunca reflete o estado real após um reload.
+
+Gap adicional descoberto: `GET /api/service-instances` **não existe** (o route handler só tem `POST`). `GET /api/applications`, `GET /api/domains` e `GET /api/bindings` existem mas retornam a tabela inteira sem filtro por `projectId`/`applicationId` (aceitável por ora — instância single-tenant, F1 — mas o FE precisa filtrar no cliente).
+
+Correções:
+1. **BE**: adicionar `GET /api/service-instances` (mesmo padrão de `listApplications`/`listDomains`/`listBindings` — sem filtro de query, retorna tudo).
+2. **FE**: reescrever `project-detail.tsx` para buscar `GET /api/applications`, `GET /api/service-instances`, `GET /api/domains`, `GET /api/deployments`, `GET /api/bindings`, `GET /api/service-templates` (loading/error state) em vez dos imports de `mock-data`, filtrando client-side por `project.id` e `environment` como já faz hoje com os mocks. Mesmo padrão de loading usado em `projects-grid.tsx`/`project-detail-loader.tsx`. ✅ (commits `951ab5d`, `95250e4`)
+
+## Bug crítico #3: node de serviço perde ícone/nome após reload (dois "template id" diferentes)
+
+Achado ao validar o bug #2 ao vivo: depois do reload, o node do Redis persiste (bug #2 corrigido), mas mostra ícone genérico e o UUID cru em vez de "Redis 8". Causa raiz: existem **dois namespaces de "template id" diferentes** que nunca foram reconciliados:
+
+- `GET /api/service-templates` retorna `serviceCatalog` (`src/server/catalog.ts`), um catálogo estático usado pelo AddPalette pra ícones/branding — `id` aqui é um slug amigável (`"redis"`, `"postgresql"`...).
+- `service_instances.templateId` no banco guarda o **UUID real** de `service_templates.id` (resolvido dentro de `createService`, que casa o slug do catálogo com a linha do banco por `name`).
+
+`project-canvas.tsx` faz `templates.find((item) => item.id === service.templateId)` comparando o slug do catálogo contra o UUID do banco — nunca bate. Na criação (mesma sessão) o node usa o `item` do palette diretamente, por isso parecia certo; só depois do reload (lendo `service.templateId` real) o bug aparece.
+
+Correção:
+1. **Contrato** (`src/lib/types.ts`, CEO): adicionar `templateName: string` em `ServiceInstance`.
+2. **BE**: em `src/server/services/services.ts`, popular `templateName` (join/lookup em `schema.serviceTemplates` por `id`) em `listServices`, `getService` e no retorno de `createService`.
+3. **FE**: em `project-canvas.tsx`, trocar o matching de `templates.find((item) => item.id === service.templateId)` para `templates.find((item) => item.name === service.templateName)`.
 
 ## Regras para o squad
 

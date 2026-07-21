@@ -91,6 +91,7 @@ export interface ServiceInstance {
   projectId: string;
   environment: EnvironmentName;
   templateId: string;
+  templateName: string;
   name: string;
   version: string;
   status: AppStatus;
