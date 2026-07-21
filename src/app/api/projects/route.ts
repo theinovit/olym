@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { dataResponse, errorResponse } from "@/server/http";
-import { listProjects } from "@/server/services/projects";
+import { createProject, listProjects } from "@/server/services/projects";
 
 const createProjectSchema = z.object({
   name: z.string().trim().min(1),
@@ -32,9 +32,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return errorResponse(
-    501,
-    "NOT_IMPLEMENTED",
-    "Project creation is not implemented yet.",
-  );
+  return dataResponse(await createProject(result.data), { status: 201 });
 }
