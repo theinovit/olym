@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useAuthSession } from "@/components/use-auth-session";
 import type { Application, Deployment, Project, Server } from "@/lib/types";
 
 function timeAgo(iso: string): string {
@@ -42,6 +43,7 @@ function formatDuration(sec: number): string {
 }
 
 export default function HomePage() {
+  const { email } = useAuthSession();
   const [projects, setProjects] = useState<Project[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
@@ -112,7 +114,7 @@ export default function HomePage() {
       <div className="mx-auto w-full max-w-7xl space-y-7">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome back, Rodrigo
+          Welcome back, {email.split("@")[0]}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Here&apos;s what&apos;s happening across your projects and servers.
