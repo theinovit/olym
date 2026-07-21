@@ -1,7 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   Boxes,
   FolderKanban,
+  LoaderCircle,
   Rocket,
   Server as ServerIcon,
 } from "lucide-react";
@@ -15,20 +19,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  MOCK_NOW,
-  MOCK_TODAY,
-  mockApplications,
-  mockDeployments,
-  mockProjects,
-  mockServers,
-} from "@/lib/mock-data";
+import type { Application, Deployment, Project, Server } from "@/lib/types";
 
 function timeAgo(iso: string): string {
   const diffMin = Math.max(
     0,
     Math.round(
-      (new Date(MOCK_NOW).getTime() - new Date(iso).getTime()) / 60000
+      (Date.now() - new Date(iso).getTime()) / 60000
     )
   );
   if (diffMin < 1) return "just now";
@@ -45,27 +42,48 @@ function formatDuration(sec: number): string {
 }
 
 export default function HomePage() {
-  const appsById = new Map(mockApplications.map((app) => [app.id, app]));
-  const appsRunning = mockApplications.filter(
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [servers, setServers] = useState<Server[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const endpoints = ["/api/projects", "/api/applications", "/api/deployments", "/api/servers"];
+    Promise.all(endpoints.map((endpoint) => fetch(endpoint, { cache: "no-store" }).then(async (response) => {
+      const body = await response.json() as { data?: unknown[]; error?: { message?: string } };
+      if (!response.ok) throw new Error(body.error?.message ?? `Could not load ${endpoint}`);
+      return body.data ?? [];
+    }))).then(([loadedProjects, loadedApplications, loadedDeployments, loadedServers]) => {
+      setProjects(loadedProjects as Project[]);
+      setApplications(loadedApplications as Application[]);
+      setDeployments(loadedDeployments as Deployment[]);
+      setServers(loadedServers as Server[]);
+    }).catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : "Could not load dashboard"))
+      .finally(() => setLoading(false));
+  }, []);
+  const appsById = new Map(applications.map((app) => [app.id, app]));
+  const appsRunning = applications.filter(
     (app) => app.status === "running"
   ).length;
-  const deploymentsToday = mockDeployments.filter((dep) =>
-    dep.startedAt.startsWith(MOCK_TODAY)
+  const today = new Date().toISOString().slice(0, 10);
+  const deploymentsToday = deployments.filter((dep) =>
+    dep.startedAt.startsWith(today)
   ).length;
-  const serversOnline = mockServers.filter(
+  const serversOnline = servers.filter(
     (server) => server.status === "online"
   ).length;
 
   const stats = [
     {
       label: "Projects",
-      value: String(mockProjects.length),
-      hint: "Across 1 server",
+      value: String(projects.length),
+      hint: `Across ${servers.length} ${servers.length === 1 ? "server" : "servers"}`,
       icon: FolderKanban,
     },
     {
       label: "Apps running",
-      value: `${appsRunning}/${mockApplications.length}`,
+      value: `${appsRunning}/${applications.length}`,
       hint: "Applications online",
       icon: Boxes,
     },
@@ -77,16 +95,18 @@ export default function HomePage() {
     },
     {
       label: "Servers online",
-      value: `${serversOnline}/${mockServers.length}`,
-      hint: mockServers[0].name,
+      value: `${serversOnline}/${servers.length}`,
+      hint: servers[0]?.name ?? "No servers connected",
       icon: ServerIcon,
     },
   ];
 
-  const recentDeployments = [...mockDeployments]
+  const recentDeployments = [...deployments]
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
     .slice(0, 6);
 
+  if (loading) return <div className="flex min-h-[calc(100svh-136px)] items-center justify-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading dashboard…</div>;
+  if (error) return <div role="alert" className="flex min-h-[calc(100svh-136px)] items-center justify-center text-sm text-red-600 dark:text-red-400">{error}</div>;
   return (
     <div className="flex min-h-[calc(100svh-136px)] flex-col justify-center">
       <div className="mx-auto w-full max-w-7xl space-y-7">
@@ -175,8 +195,8 @@ export default function HomePage() {
           </CardHeader>
           <CardContent>
             <ul className="divide-y">
-              {mockProjects.map((project) => {
-                const apps = mockApplications.filter(
+              {projects.map((project) => {
+                const apps = applications.filter(
                   (app) => app.projectId === project.id
                 );
                 return (
