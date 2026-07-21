@@ -143,6 +143,20 @@ Correção (tudo FE, endpoints já existem — `GET /api/projects`, `GET /api/ap
 
 Recomendo commits pequenos por página/componente (mesmo padrão já usado nos bugs #1-#3), lint/build a cada um.
 
+## Bug crítico #5: conectar app a serviço no canvas é 100% fake
+
+Achado testando ao vivo o pedido do usuário ("testa o fluxo de conectar um app a um serviço"): arrastar uma conexão de uma Application pra um Service no canvas mostra o edge tracejado, injeta o toast "REDIS_URL injected into qa-test-app"... e nada mais. Confirmado com `read_network_requests`: **nenhuma chamada de rede acontece**. Dando reload na página, o edge desaparece — a conexão nunca existiu fora do estado local do React.
+
+Causa raiz em `project-canvas.tsx`:
+- `onConnect` (linha ~606): calcula a `injectedVarKey` certa (via `injectedKey(target.data.template)`) e só faz `setEdges((current) => [...current, {...}])` — nunca chama `POST /api/bindings`, que já existe e já está implementado (`createBinding` em `src/server/services/bindings.ts`).
+- `onEdgesChange` (linha 469) é o handler puro do `useEdgesState` do React Flow (via `deleteKeyCode={["Backspace","Delete"]}`) — apagar uma aresta também nunca chama `DELETE /api/bindings` (que também já existe).
+- A leitura já é real (`initialEdges` filtra o array `bindings` vindo de `GET /api/bindings`, corrigido no bug #2) — só a escrita (criar/apagar binding) ficou de fora.
+
+Correção (100% FE — `POST` e `DELETE /api/bindings` já existem e já são usados noutros lugares):
+1. `onConnect`: depois das validações existentes (app↔service, duplicata), fazer `POST /api/bindings` com `{ applicationId, serviceInstanceId }`; só chamar `setEdges(...)` e o toast de sucesso dentro do `.then()`, com o `id` real retornado pela API (não `binding_${Date.now()}`). Em caso de erro, não adicionar o edge e mostrar `toast.error`.
+2. Interceptar a remoção de aresta (usar o `onEdgesChange` do React Flow filtrando por `type === "remove"`, ou um `onEdgeClick`/botão dedicado se já existir affordance de deletar edge) pra chamar `DELETE /api/bindings?id=...` antes de remover do estado local.
+3. Reusar o padrão de loading/erro já estabelecido (toast de erro se o POST/DELETE falhar, sem deixar o canvas num estado inconsistente com o banco).
+
 ## Regras para o squad
 
 1. Frontend não toca em `src/server` e `src/db`; Backend não toca em `src/app/(dashboard)` e `src/components` (exceto `src/app/api`). Contrato entre os dois: tipos em `src/lib/types.ts`.
