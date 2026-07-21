@@ -121,6 +121,28 @@ Correção:
 2. **BE**: em `src/server/services/services.ts`, popular `templateName` (join/lookup em `schema.serviceTemplates` por `id`) em `listServices`, `getService` e no retorno de `createService`.
 3. **FE**: em `project-canvas.tsx`, trocar o matching de `templates.find((item) => item.id === service.templateId)` para `templates.find((item) => item.name === service.templateName)`.
 
+## Bug crítico #4: resto do dashboard ainda 100% mock
+
+Varredura (`grep -rl "@/lib/mock-data" src/app src/components`) depois de corrigir #1-#3: praticamente toda página fora do canvas de projeto ainda lê `mock-data.ts` direto, com zero fetch pra API real. Todos os endpoints GET necessários **já existem** (nenhuma dependência do BE) — isso é 100% escopo FE:
+
+- **`src/app/(dashboard)/home/page.tsx`**: stats do dashboard (contagem de projetos, apps rodando, deploys hoje, servidores online) e a lista "Recent deployments" — tudo de `mockProjects`/`mockApplications`/`mockDeployments`/`mockServers`.
+- **`src/app/(dashboard)/servers/page.tsx`**: lista de servidores de `mockServers` em vez de `GET /api/servers` (que já existe e já é usado no formulário de New Project).
+- **`src/app/(dashboard)/domains/page.tsx`**: tabela de `mockDomains`/`mockApplications`. Mais grave: o diálogo "Add Domain" **não chama a API** — o `submit()` só faz `setOpen(false)` + `toast.success(...)` local, nunca `POST /api/domains`.
+- **`src/app/(dashboard)/monitoring/page.tsx`**: métricas de servidor e health de aplicação inteiramente de mock.
+- **`src/components/command-palette.tsx`** (⌘K): lista de projetos de `mockProjects` — projetos criados de verdade não aparecem na busca rápida.
+- **`src/components/deployments-table.tsx`**: resolve nome da app via `mockApplications` (mesmo se a lista de deployments em si já vier real).
+- **`src/components/projects-grid.tsx`**: já busca `GET /api/projects` (bug #1), mas o enriquecimento por card (contagem de apps, último deploy) ainda filtra `mockApplications`/`mockDeployments` por `project.id` — como o id agora é UUID real, sempre bate zero (por coincidência parece "0 apps", mas pelo motivo errado).
+
+Correção (tudo FE, endpoints já existem — `GET /api/projects`, `GET /api/applications`, `GET /api/servers`, `GET /api/domains`, `GET /api/deployments`, `POST /api/domains`):
+1. `projects-grid.tsx`: trocar o enriquecimento mock por fetch real de applications/deployments (mesmo padrão já usado pra `allProjects`).
+2. `home/page.tsx`, `monitoring/page.tsx`: buscar projects/applications/servers/deployments reais em vez de mock.
+3. `servers/page.tsx`: `GET /api/servers` em vez de `mockServers`.
+4. `domains/page.tsx`: `GET /api/domains` + `GET /api/applications` pra tabela e o seletor do diálogo; `submit()` passa a fazer `POST /api/domains` de verdade (loading/error, fechar diálogo só após sucesso).
+5. `command-palette.tsx`: `GET /api/projects` em vez de `mockProjects`.
+6. `deployments-table.tsx`: `GET /api/applications` em vez de `mockApplications` pra resolver nomes.
+
+Recomendo commits pequenos por página/componente (mesmo padrão já usado nos bugs #1-#3), lint/build a cada um.
+
 ## Regras para o squad
 
 1. Frontend não toca em `src/server` e `src/db`; Backend não toca em `src/app/(dashboard)` e `src/components` (exceto `src/app/api`). Contrato entre os dois: tipos em `src/lib/types.ts`.
