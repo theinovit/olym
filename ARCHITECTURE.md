@@ -174,6 +174,24 @@ Correção (padrão igual ao já usado pro worker — `build:worker`/`dist/worke
 
 Território: `Dockerfile`, `docker-compose.prod.yml`, `package.json`, `src/server/` → **BE**.
 
+## Bug crítico #7 (P0 — ainda mais fundamental que #6): `docker build` falha hoje, não gera imagem nenhuma
+
+Rodei `docker build -t olym-build-test --target runner .` localmente pra validar o build de verdade (não só ler o Dockerfile). **Falha com exit code 1** no primeiro estágio (`deps`):
+
+```
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: cpu-features@0.0.10, esbuild@0.18.20, esbuild@0.25.12, esbuild@0.28.1, msgpackr-extract@3.0.4, protobufjs@7.6.5, sharp@0.34.5, ssh2@1.17.0, unrs-resolver@1.12.2
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+```
+
+Causa raiz: `package.json` não tem campo `"packageManager"` fixando a versão do pnpm. `Dockerfile` faz só `corepack enable` (sem versão pinada), então o Corepack baixa o pnpm mais recente disponível (constatei: **pnpm 11.15.1**, bem diferente do pnpm 9.15.4 usado localmente/no `pnpm-lock.yaml` lockfileVersion 9.0). Esse pnpm mais novo bloqueia por padrão scripts de build/postinstall de dependências nativas (proteção supply-chain) a menos que aprovados explicitamente — e não tem como aprovar interativamente dentro de um `docker build`. **Isso quebra o build da imagem inteira, inclusive o workflow de CI `docker-publish.yml`** — não é só o instalador que não funciona, a imagem nem chega a ser publicada.
+
+Correção (`package.json`, sem tocar em código de produto):
+1. Fixar a versão do pnpm: `"packageManager": "pnpm@9.15.4"` (a mesma já usada localmente, compatível com `lockfileVersion: '9.0'`) — garante que `corepack enable` sempre resolve pra essa versão exata, em dev, CI e Docker.
+2. Mesmo fixando a versão, listar explicitamente os pacotes que precisam rodar seus scripts de build nativos, via `"pnpm": { "onlyBuiltDependencies": ["esbuild", "sharp", "ssh2", "cpu-features", "msgpackr-extract", "protobufjs", "unrs-resolver"] }` — isso pré-aprova esses pacotes sem exigir `pnpm approve-builds` interativo (mecanismo documentado do pnpm 9+ para builds não-interativos/CI).
+3. Validar rodando `docker build --target runner .` local de verdade depois da correção (não só lint/build do Next) — é o único jeito de confirmar que resolveu, porque o erro só aparece dentro do ambiente limpo do Docker/Corepack, não no `node_modules` local já instalado.
+
+Território: só `package.json` (nenhuma mudança de código). Prioridade igual ou maior que o bug #6 — sem isso a imagem nem builda, então a correção de migrations do #6 nunca chega a rodar em lugar nenhum.
+
 ## Regras para o squad
 
 1. Frontend não toca em `src/server` e `src/db`; Backend não toca em `src/app/(dashboard)` e `src/components` (exceto `src/app/api`). Contrato entre os dois: tipos em `src/lib/types.ts`.
