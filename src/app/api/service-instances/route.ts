@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { dataResponse, errorResponse } from "@/server/http";
-import { createService } from "@/server/services/services";
+import { createService, listServices } from "@/server/services/services";
 
 const serviceSchema = z.object({
   projectId: z.string().trim().min(1),
@@ -10,6 +10,10 @@ const serviceSchema = z.object({
   name: z.string().trim().min(1),
   version: z.string().trim().min(1),
 });
+
+export async function GET() {
+  return dataResponse(await listServices());
+}
 
 export async function POST(request: Request) {
   let body: unknown;
