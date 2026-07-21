@@ -157,6 +157,23 @@ Correção (100% FE — `POST` e `DELETE /api/bindings` já existem e já são u
 2. Interceptar a remoção de aresta (usar o `onEdgesChange` do React Flow filtrando por `type === "remove"`, ou um `onEdgeClick`/botão dedicado se já existir affordance de deletar edge) pra chamar `DELETE /api/bindings?id=...` antes de remover do estado local.
 3. Reusar o padrão de loading/erro já estabelecido (toast de erro se o POST/DELETE falhar, sem deixar o canvas num estado inconsistente com o banco).
 
+## Bug crítico #6 (P0 — bloqueia o instalador): produção não roda migrations em lugar nenhum
+
+Pergunta do usuário: "se eu instalar vai funcionar?" — resposta honesta hoje é **não**. Investigação:
+
+- README documenta `pnpm db:migrate` como passo manual do fluxo de **dev**. O instalador de produção (`curl -fsSL get.olym.sh | bash` → `docker-compose.prod.yml`) não tem equivalente nenhum.
+- `Dockerfile` (estágio `runner`) só copia `public`, `.next/standalone`, `.next/static` e `dist/worker.cjs` — nunca `src/db/migrations/` nem `drizzle.config.ts`. `drizzle-kit` é devDependency e nem o `node_modules` completo chega no runner (só o podado do `.next/standalone`).
+- Resultado: numa instalação nova, o Postgres sobe vazio (sem nenhuma tabela) e o Next.js tenta consultar `users`/`projects`/etc. desde o primeiro request — `GET /api/auth/status` (chamado pela tela de login/setup) já quebra com erro cru do Postgres. **Nada funciona a partir da primeira tela.**
+
+Correção (padrão igual ao já usado pro worker — `build:worker`/`dist/worker.cjs`):
+1. Novo `src/server/migrate.ts`: usa `migrate()` de `drizzle-orm/node-postgres/migrator` apontando pra `./src/db/migrations`, conecta via `DATABASE_URL`, roda e sai (`process.exit(0)` em sucesso, `process.exit(1)` logando o erro em falha).
+2. `package.json`: `"build:migrate": "esbuild src/server/migrate.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/migrate.cjs --external:pg-native --external:cpu-features"` (mesmo padrão do `build:worker`).
+3. `Dockerfile`: builder roda `pnpm build && pnpm build:worker && pnpm build:migrate`; runner ganha `COPY --from=builder .../dist/migrate.cjs ./migrate.cjs` **e** `COPY --from=builder .../src/db/migrations ./src/db/migrations` (o `migrationsFolder` do drizzle precisa dos `.sql` + `meta/_journal.json` como arquivos estáticos, não só o bundle JS).
+4. `docker/docker-compose.prod.yml`: novo serviço one-off `migrate` (mesma imagem, `command: ["node", "migrate.cjs"]`, `restart: "no"`, `depends_on: postgres: condition: service_healthy`, só precisa de `DATABASE_URL`). `olym` e `olym-worker` passam a ter `depends_on: migrate: condition: service_completed_successfully` além do que já têm.
+5. Idempotência: `migrate()` do drizzle já é idempotente (registra migrations aplicadas), então isso também cobre upgrades futuros (novo `OLYM_VERSION` com migrations novas) — rodar de novo o compose reaplica só o que falta.
+
+Território: `Dockerfile`, `docker-compose.prod.yml`, `package.json`, `src/server/` → **BE**.
+
 ## Regras para o squad
 
 1. Frontend não toca em `src/server` e `src/db`; Backend não toca em `src/app/(dashboard)` e `src/components` (exceto `src/app/api`). Contrato entre os dois: tipos em `src/lib/types.ts`.
