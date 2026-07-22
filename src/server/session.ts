@@ -60,10 +60,25 @@ export function verifySessionToken(token?: string): SessionPayload | null {
   }
 }
 
-export const sessionCookieOptions = {
-  httpOnly: true,
-  secure: true,
-  sameSite: "lax" as const,
-  path: "/",
-  maxAge: SESSION_MAX_AGE_SECONDS,
-};
+// Browsers silently refuse to store `Secure` cookies on a plain-HTTP origin
+// (except localhost). Olym is reachable over HTTP-only on a bare IP until a
+// domain is configured in Settings (see Sprint 22), so `secure` must reflect
+// the actual connection instead of always being true — otherwise login
+// "succeeds" server-side but the cookie never lands in the browser.
+function isSecureRequest(request: Request): boolean {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  if (forwardedProto) {
+    return forwardedProto.split(",")[0]?.trim().toLowerCase() === "https";
+  }
+  return new URL(request.url).protocol === "https:";
+}
+
+export function sessionCookieOptions(request: Request) {
+  return {
+    httpOnly: true,
+    secure: isSecureRequest(request),
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  };
+}

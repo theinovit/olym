@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     (await cookies()).set(
       SESSION_COOKIE_NAME,
       createSessionToken(user.id),
-      sessionCookieOptions,
+      sessionCookieOptions(request),
     );
     return dataResponse({ email: user.email });
   } catch {
