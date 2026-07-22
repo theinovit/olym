@@ -1,16 +1,46 @@
-// Server service — F1 stubs. localhost via Docker socket in F2; SSH later.
+// The local Docker host is always available; remote hosts via SSH remain F2.
 
 import type { Server } from "@/lib/types";
 import { mockServers } from "@/lib/mock-data";
 import { getDb, schema } from "@/db";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
+import { createDockerClient } from "../docker";
 import { isDatabaseEnabled } from "../env";
 import { NotImplementedError } from "../errors";
 import { serializeDates } from "./mappers";
 
 export async function listServers(): Promise<Server[]> {
   if (!isDatabaseEnabled()) return mockServers;
-  const rows = await getDb().select().from(schema.servers).orderBy(asc(schema.servers.createdAt));
+  let rows = await getDb()
+    .select()
+    .from(schema.servers)
+    .orderBy(asc(schema.servers.createdAt));
+  if (rows.length === 0) {
+    const dockerInfo = await createDockerClient().info();
+    await getDb().transaction(async (transaction) => {
+      await transaction.execute(
+        sql`select pg_advisory_xact_lock(hashtext('olym-local-server-bootstrap'))`,
+      );
+      const [existing] = await transaction
+        .select({ id: schema.servers.id })
+        .from(schema.servers)
+        .limit(1);
+      if (!existing) {
+        await transaction.insert(schema.servers).values({
+          name: "This server",
+          host: process.env.OLYM_PUBLIC_IP?.trim() || "this-server",
+          status: "online",
+          cpuCores: dockerInfo.NCPU,
+          memoryMb: Math.floor(dockerInfo.MemTotal / 1024 / 1024),
+          dockerVersion: dockerInfo.ServerVersion,
+        });
+      }
+    });
+    rows = await getDb()
+      .select()
+      .from(schema.servers)
+      .orderBy(asc(schema.servers.createdAt));
+  }
   return rows.map((row) => serializeDates<Server>(row));
 }
 
