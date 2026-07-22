@@ -23,21 +23,16 @@ services:
       DATABASE_URL: postgres://olym:${POSTGRES_PASSWORD}@postgres:5432/olym
       REDIS_URL: redis://redis:6379
       DOCKER_HOST: tcp://socket-proxy:2375
-      OLYM_DOCKER_NETWORK: olym
+      OLYM_DOCKER_NETWORK: ${OLYM_DOCKER_NETWORK:-olym}
       TRAEFIK_CERTRESOLVER: letsencrypt
       DEPLOY_READINESS_PATH: ${DEPLOY_READINESS_PATH:-/}
       DEPLOY_READINESS_TIMEOUT_MS: ${DEPLOY_READINESS_TIMEOUT_MS:-60000}
       DEPLOY_READINESS_INTERVAL_MS: ${DEPLOY_READINESS_INTERVAL_MS:-1000}
-      OLYM_HOST: ${OLYM_HOST}
+      OLYM_PUBLIC_IP: ${OLYM_PUBLIC_IP}
       OLYM_SECRET: ${OLYM_SECRET}
     volumes:
       - olym-data:/data
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.olym.rule=Host(`${OLYM_HOST}`)
-      - traefik.http.routers.olym.entrypoints=websecure
-      - traefik.http.routers.olym.tls.certresolver=letsencrypt
-      - traefik.http.services.olym.loadbalancer.server.port=3000
+      - traefik-dynamic:/dynamic
     networks:
       - olym
 
@@ -59,7 +54,7 @@ services:
       DATABASE_URL: postgres://olym:${POSTGRES_PASSWORD}@postgres:5432/olym
       REDIS_URL: redis://redis:6379
       DOCKER_HOST: tcp://socket-proxy:2375
-      OLYM_DOCKER_NETWORK: olym
+      OLYM_DOCKER_NETWORK: ${OLYM_DOCKER_NETWORK:-olym}
       TRAEFIK_CERTRESOLVER: letsencrypt
       DEPLOY_READINESS_PATH: ${DEPLOY_READINESS_PATH:-/}
       DEPLOY_READINESS_TIMEOUT_MS: ${DEPLOY_READINESS_TIMEOUT_MS:-60000}
@@ -128,17 +123,19 @@ services:
     image: traefik:v3.3
     restart: unless-stopped
     depends_on:
+      olym:
+        condition: service_started
       socket-proxy:
         condition: service_started
     command:
+      - --log.level=${TRAEFIK_LOG_LEVEL:-INFO}
       - --providers.docker=true
       - --providers.docker.endpoint=tcp://socket-proxy:2375
       - --providers.docker.exposedbydefault=false
+      - --providers.file.directory=/dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
-      - --entrypoints.web.http.redirections.entrypoint.to=websecure
-      - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
     ports:
@@ -146,15 +143,17 @@ services:
       - "443:443"
     volumes:
       - traefik-acme:/acme
+      - traefik-dynamic:/dynamic:ro
     networks:
       - olym
 
 networks:
   olym:
-    name: olym
+    name: ${OLYM_DOCKER_NETWORK:-olym}
 
 volumes:
   olym-data:
   postgres-data:
   redis-data:
   traefik-acme:
+  traefik-dynamic:

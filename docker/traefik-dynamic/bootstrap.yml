@@ -1,0 +1,13 @@
+http:
+  routers:
+    olym-bootstrap:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - web
+      priority: 1
+      service: olym
+  services:
+    olym:
+      loadBalancer:
+        servers:
+          - url: "http://olym:3000"
