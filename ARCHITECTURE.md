@@ -234,3 +234,14 @@ Validação obrigatória antes de considerar pronto: subir a stack completa loca
 2. Todo trabalho termina com `pnpm lint && pnpm build` passando.
 3. Commits pequenos e frequentes na branch `main` (por enquanto). Mensagens em inglês, convencionais (`feat:`, `fix:`).
 4. Dados mock realistas em `src/lib/mock-data.ts` (Frontend cria, Backend substitui por queries reais na F2).
+
+## Bug crítico #9 (P0 — bloqueia deploy): nenhum Server existe numa instalação nova, e não tem como criar um
+
+Achado ao vivo pelo usuário testando deploy de verdade na VPS: `src/server/services/servers.ts` tem o comentário original "F1 stubs. localhost via Docker socket in F2; SSH later" — nunca foi fechado. `addServer()` já é uma implementação real (insert no Drizzle), mas **nenhuma rota chama ela** — `src/app/api/servers/route.ts` só tem `GET`, sem `POST`. O diálogo "Add server" no FE é 100% preview (pede host + chave SSH privada, nunca envia nada) e nem faria sentido aqui: ele serve pra conectar um host remoto por SSH (F2, já documentado no backlog), não pro próprio host onde o Olym já está rodando — que já tem acesso direto ao Docker Engine dele via `socket-proxy`, sem precisar de SSH nenhum.
+
+Resultado: instalação nova → zero linhas em `servers` → dropdown de servidor em "New Project" vazio → **impossível criar um projeto, logo impossível criar uma aplicação, logo impossível fazer deploy de nada.** Bloqueia o produto inteiro desde o primeiro uso real.
+
+Correção (BE, `src/server/services/servers.ts`):
+`listServers()` passa a garantir que existe pelo menos um server "local" antes de retornar: se a tabela estiver vazia, insere um registro representando o próprio host (o Olym já está rodando nele e já fala com o Docker dele via `createDockerClient()`/socket-proxy — não precisa de SSH). Popular com dados reais via `docker.info()` do dockerode (já usado em `src/server/docker.ts`): `NCPU` → `cpuCores`, `MemTotal` (bytes → MB) → `memoryMb`, `ServerVersion` → `dockerVersion`, `status: "online"`. `host` = `process.env.OLYM_PUBLIC_IP` (já existe desde o Sprint 22) ou fallback `"this-server"` se não setada (dev local sem a env var). `name` pode ser algo como `"This server"` ou derivar do instance name já salvo. Isso corrige tanto instalações novas quanto a instância que o usuário já tem rodando agora (não precisa de migration/backfill manual — o próximo `GET /api/servers` já resolve).
+
+Fora de escopo agora (não bloqueia): o diálogo "Add server" via SSH continua como preview — é trabalho futuro documentado (`Provisionamento multi-server via SSH` no backlog do BE), só não pode ser o único caminho pra ter QUALQUER servidor disponível.
