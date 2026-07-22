@@ -55,8 +55,8 @@ ufw_allows_port() {
       rule = $1
       sub(/\/tcp$/, "", rule)
       count = split(rule, ports, ",")
-      for (index = 1; index <= count; index++) {
-        if (ports[index] == wanted) found = 1
+      for (i = 1; i <= count; i++) {
+        if (ports[i] == wanted) found = 1
       }
     }
     END { exit(found ? 0 : 1) }
