@@ -192,6 +192,42 @@ Correção (`package.json`, sem tocar em código de produto):
 
 Território: só `package.json` (nenhuma mudança de código). Prioridade igual ou maior que o bug #6 — sem isso a imagem nem builda, então a correção de migrations do #6 nunca chega a rodar em lugar nenhum.
 
+## Sprint 22: instalar sem domínio, configurar domínio de dentro do painel (sem restart)
+
+Decisão de produto (usuário, 2026-07-22): o instalador não deve mais pedir domínio/email antes de subir a stack. Fluxo novo:
+
+1. Cliente roda `git clone` + `start.sh` (ou o `curl | bash` de sempre) — stack sobe imediatamente, painel acessível via **HTTP puro no IP público da VPS**, sem certificado nenhum ainda.
+2. Cliente entra no painel pelo IP, vai em **Settings → Domain**, digita o domínio (+ email pro Let's Encrypt) que ele já apontou via DNS A pra essa VPS.
+3. Olym confirma que o DNS já resolve pro IP certo, escreve a config do Traefik na hora, e o domínio passa a servir HTTPS **sem reiniciar nenhum container**.
+
+Isso muda o modelo de roteamento do Traefik: hoje é 100% labels Docker estáticas resolvidas em `docker compose up` a partir do `.env`. Passa a ser **file provider dinâmico** — Traefik observa um diretório e recarrega sozinho quando um arquivo muda (`--providers.file.watch=true`), sem precisar de restart. O app escreve/reescreve esse arquivo quando o admin salva o domínio em Settings.
+
+### `docker-compose.prod.yml` / `Dockerfile`
+1. Novo volume nomeado `traefik-dynamic`, montado em `/dynamic` no `olym` (leitura/escrita) e no `traefik` (só leitura).
+2. Traefik ganha `--providers.file.directory=/dynamic --providers.file.watch=true` no `command:`. Mantém `--providers.docker=true` só pra descoberta de containers de app/serviço (deploy engine já usa isso via labels dinâmicas por app) — a rota do painel do Olym em si sai dos labels Docker e vira 100% file provider.
+3. Remover do serviço `olym` os labels estáticos `traefik.http.routers.olym.rule=Host(...)` etc. — substituídos por um arquivo bootstrap (ver abaixo).
+4. `.env` gerado pelo instalador não precisa mais de `OLYM_HOST`/`ACME_EMAIL` — precisa de um novo `OLYM_PUBLIC_IP` (IP público detectado pelo `start.sh`, usado só pra validar DNS depois, no passo de configurar domínio).
+
+### Bootstrap (acesso via IP, sem domínio)
+Arquivo estático dentro da imagem (ex. `docker/traefik-dynamic/bootstrap.yml`, copiado pro `runner` E pro volume `/dynamic` na primeira subida via um `entrypoint`/init do container `olym`, já que o volume começa vazio): um router `olym-bootstrap` casando `PathPrefix(\`/\`)` no entrypoint `web` (porta 80), sem TLS, apontando pro serviço `olym` — sempre existe, sempre serve o painel via IP em HTTP puro, independente de domínio configurado ou não. Prioridade baixa (Traefik já resolve por especificidade/tamanho de regra, mas vale setar `priority` explícito baixo pra garantir que o router do domínio real, quando existir, ganhe na frente).
+
+### Backend
+1. **Schema** (`src/db/schema.ts` + migration): `instance_settings` ganha `domain: text (nullable)`, `acmeEmail: text (nullable)`, `sslStatus: enum('none','pending','active','failed')` default `'none'`.
+2. **`GET/POST /api/settings/domain`**: `POST` recebe `{ hostname, acmeEmail }`. Valida formato de hostname; resolve DNS A do hostname (`dns.promises.resolve4`) e compara contra `OLYM_PUBLIC_IP` (env var, injetada pelo `start.sh`) — se não bater, retorna erro claro ("DNS ainda não aponta pra este servidor (IP esperado: X.X.X.X)") sem tocar em nada. Se bater: escreve `/dynamic/domain.yml` com um router HTTPS (`Host(\`hostname\`)`, entrypoint `websecure`, `tls.certresolver=letsencrypt`) apontando pro serviço `olym`, persiste `domain`/`acmeEmail`/`sslStatus: 'pending'` no banco. `GET` retorna o estado atual pra Settings renderizar.
+3. Escrita do arquivo dinâmico é atômica (escrever em `.tmp` e `rename`) pra Traefik nunca ler um YAML pela metade.
+4. Emissão do certificado em si continua 100% responsabilidade do Traefik (ACME HTTP-01 no entrypoint `web`) — o app só escreve a config, não fala com o Let's Encrypt diretamente. `sslStatus` fica `'pending'` até o app conseguir confirmar (ex. polling simples: tentar um HEAD HTTPS pro próprio domínio depois de escrever o arquivo, com retry/timeout, marcar `'active'` ou `'failed'`).
+
+### Frontend
+1. `Settings` ganha um novo card **"Domain"**: campo hostname + campo email, botão "Enable HTTPS", estado (nenhum configurado / verificando DNS / emitindo certificado / ativo / falhou), mesmo padrão de loading/erro já usado em todo o resto do Settings.
+2. Opcional (não bloqueante): banner no Home "Configure seu domínio" enquanto `sslStatus === 'none'`.
+
+### `scripts/install.sh` (CEO)
+Remove os prompts de `OLYM_HOST`/`ACME_EMAIL` inteiramente. Detecta IP público (endpoint externo tipo `https://api.ipify.org`, com fallback pra IP da interface principal) e grava em `OLYM_PUBLIC_IP` no `.env`. Mensagem final passa a ser "Dashboard disponível em http://<IP> — configure seu domínio em Settings assim que o DNS estiver pronto", em vez de assumir HTTPS desde o início.
+
+Território: `docker-compose.prod.yml`, `Dockerfile`, `src/db`, `src/server`, `src/app/api` → **BE**. `src/app/(dashboard)/settings` → **FE** (depende do contrato do endpoint do BE — pode começar pela UI com dado mockado local e trocar por fetch real assim que o endpoint existir, avisando quando puder integrar). `scripts/install.sh` → **CEO**.
+
+Validação obrigatória antes de considerar pronto: subir a stack completa local via `docker compose -f docker/docker-compose.prod.yml up -d` (não só `docker build`) e confirmar que o painel responde em `http://localhost` sem domínio configurado, e que escrever um arquivo de teste em `/dynamic` faz o Traefik recarregar sozinho (log do Traefik mostra o provider file pegando a mudança) sem reiniciar o container.
+
 ## Regras para o squad
 
 1. Frontend não toca em `src/server` e `src/db`; Backend não toca em `src/app/(dashboard)` e `src/components` (exceto `src/app/api`). Contrato entre os dois: tipos em `src/lib/types.ts`.
