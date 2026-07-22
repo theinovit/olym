@@ -41,7 +41,7 @@ The app runs without `DATABASE_URL`/`REDIS_URL` set — it falls back to realist
 curl -fsSL get.olym.sh | bash
 ```
 
-Spins up the full stack via Docker Compose: app + Postgres + Redis + Traefik + a docker-socket-proxy (the app and Traefik never touch the raw Docker socket directly).
+Spins up the full stack via Docker Compose: app + Postgres + Redis + Traefik + a docker-socket-proxy (the app and Traefik never touch the raw Docker socket directly). No domain is required upfront — the dashboard is reachable over plain HTTP on the server's public IP right after install. Point a domain's DNS A record at the server whenever you're ready, then enable HTTPS on it from Settings inside the dashboard — applied live, no reinstall or restart needed.
 
 ## Project structure
 
