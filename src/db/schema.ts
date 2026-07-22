@@ -80,6 +80,13 @@ export const sslStatusEnum = pgEnum("ssl_status", [
   "failed",
 ]);
 
+export const instanceSslStatusEnum = pgEnum("instance_ssl_status", [
+  "none",
+  "pending",
+  "active",
+  "failed",
+]);
+
 // --- Tables ---
 
 export const users = pgTable("users", {
@@ -96,6 +103,9 @@ export const instanceSettings = pgTable(
   {
     id: integer("id").primaryKey().default(1),
     name: text("name").notNull(),
+    domain: text("domain"),
+    acmeEmail: text("acme_email"),
+    sslStatus: instanceSslStatusEnum("ssl_status").notNull().default("none"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
